@@ -1,4 +1,5 @@
 # Re-exports for backward compatibility
+from app.schemas.arbitrage import *
 from app.schemas.common import *
 from app.schemas.events import *
 from app.schemas.odds import *

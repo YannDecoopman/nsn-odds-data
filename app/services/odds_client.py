@@ -25,6 +25,13 @@ from app.schemas import (
     TotalsLine,
     TotalsOutput,
 )
+from app.schemas.arbitrage import (
+    ArbitrageBet,
+    ArbitrageEvent,
+    ArbitrageLeg,
+    ArbitrageResponse,
+    OptimalStake,
+)
 from app.schemas.value_bets import (
     ConsensusOdds,
     ValueBet,
@@ -806,6 +813,160 @@ class OddsAPIClient:
             )
         except Exception as e:
             logger.error(f"Transform value bet error: {e}")
+            return None
+
+    async def get_arbitrage_bets(
+        self,
+        bookmakers: list[str],
+        sport: str | None = None,
+        min_profit: float = 1.0,
+        limit: int = 5,
+    ) -> ArbitrageResponse:
+        """Fetch arbitrage opportunities across multiple bookmakers.
+
+        Args:
+            bookmakers: List of bookmaker keys to compare
+            sport: Filter by sport slug
+            min_profit: Minimum profit margin threshold
+            limit: Maximum results to return
+        """
+        # Arbitrage API takes comma-separated bookmakers
+        bookmakers_str = ",".join(bookmakers)
+
+        data = await self._request(
+            "/arbitrage-bets",
+            params={
+                "bookmakers": bookmakers_str,
+                "includeEventDetails": "true",
+                "limit": str(min(limit * 3, 100)),  # Fetch more for filtering
+            },
+            cache_key=f"arbitrage:{bookmakers_str}",
+            cache_ttl=120,  # 2 minutes
+        )
+
+        if not isinstance(data, list):
+            return ArbitrageResponse(data=[])
+
+        # Transform and filter
+        arb_bets: list[ArbitrageBet] = []
+        for raw_bet in data:
+            try:
+                bet = self._transform_arbitrage_bet(raw_bet)
+                if bet is None:
+                    continue
+
+                # Apply filters
+                if bet.profit_margin < min_profit:
+                    continue
+                if sport and bet.event.sport.slug.lower() != sport.lower():
+                    continue
+
+                arb_bets.append(bet)
+            except Exception as e:
+                logger.warning(f"Failed to parse arbitrage bet: {e}")
+                continue
+
+        # Sort by profit descending
+        arb_bets.sort(key=lambda x: x.profit_margin, reverse=True)
+
+        return ArbitrageResponse(data=arb_bets[:limit])
+
+    def _transform_arbitrage_bet(self, raw: dict[str, Any]) -> ArbitrageBet | None:
+        """Transform raw API response to ArbitrageBet schema."""
+        try:
+            event_data = raw.get("event", {})
+            if not isinstance(event_data, dict):
+                return None
+
+            # Sport and league are strings in the API response
+            sport_str = event_data.get("sport", "")
+            league_str = event_data.get("league", "")
+
+            def to_slug(s: str) -> str:
+                return s.lower().replace(" ", "-").replace(",", "").replace(".", "")
+
+            def safe_float(val: Any, default: float = 0.0) -> float:
+                if val is None or val == "N/A" or val == "":
+                    return default
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return default
+
+            # Parse timestamp
+            detected_str = raw.get("detectedAt", raw.get("createdAt", ""))
+            detected_at = (
+                datetime.fromisoformat(detected_str.replace("Z", "+00:00"))
+                if detected_str
+                else datetime.now()
+            )
+
+            # Parse event date
+            event_date_str = event_data.get("date", "")
+            event_date = (
+                datetime.fromisoformat(event_date_str.replace("Z", "+00:00"))
+                if event_date_str
+                else datetime.now()
+            )
+
+            # Parse market
+            market_data = raw.get("market", {})
+            market_name = market_data.get("name", "ML") if isinstance(market_data, dict) else "ML"
+
+            # Parse legs
+            legs_data = raw.get("legs", [])
+            legs = []
+            for leg in legs_data:
+                if isinstance(leg, dict):
+                    legs.append(
+                        ArbitrageLeg(
+                            side=leg.get("side", ""),
+                            bookmaker=leg.get("bookmaker", ""),
+                            odds=safe_float(leg.get("odds")),
+                            directLink=leg.get("directLink", leg.get("href")),
+                        )
+                    )
+
+            # Parse optimal stakes
+            stakes_data = raw.get("optimalStakes", [])
+            optimal_stakes = []
+            for stake in stakes_data:
+                if isinstance(stake, dict):
+                    optimal_stakes.append(
+                        OptimalStake(
+                            side=stake.get("side", ""),
+                            bookmaker=stake.get("bookmaker", ""),
+                            stake=safe_float(stake.get("stake")),
+                            potentialReturn=safe_float(stake.get("potentialReturn")),
+                        )
+                    )
+
+            return ArbitrageBet(
+                id=raw.get("id", f"arb_{raw.get('eventId', '')}"),
+                eventId=str(raw.get("eventId", "")),
+                market=market_name,
+                profitMargin=safe_float(raw.get("profitMargin")),
+                impliedProbability=safe_float(raw.get("impliedProbability"), 100.0),
+                totalStake=safe_float(raw.get("totalStake"), 100.0),
+                legs=legs,
+                optimalStakes=optimal_stakes,
+                event=ArbitrageEvent(
+                    home=event_data.get("home", ""),
+                    away=event_data.get("away", ""),
+                    date=event_date,
+                    sport=SportInfo(
+                        name=sport_str if isinstance(sport_str, str) else "",
+                        slug=to_slug(sport_str) if isinstance(sport_str, str) else "",
+                    ),
+                    league=LeagueInfo(
+                        name=league_str if isinstance(league_str, str) else "",
+                        slug=to_slug(league_str) if isinstance(league_str, str) else "",
+                    ),
+                ),
+                detectedAt=detected_at,
+            )
+        except Exception as e:
+            logger.error(f"Transform arbitrage bet error: {e}")
             return None
 
 

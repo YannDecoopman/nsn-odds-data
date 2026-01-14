@@ -11,6 +11,7 @@ from app.schemas import (
     OddsOutput,
     TotalsOutput,
 )
+from app.schemas.arbitrage import ArbitrageResponse
 from app.schemas.value_bets import ValueBetsResponse
 from app.services.odds_client import odds_client
 
@@ -81,6 +82,20 @@ class OddsAPIProvider(ProviderInterface):
             sport=sport,
             league=league,
             min_ev=min_ev,
+            limit=limit,
+        )
+
+    async def get_arbitrage_bets(
+        self,
+        sport: str | None = None,
+        min_profit: float = 1.0,
+        limit: int = 5,
+    ) -> ArbitrageResponse:
+        """Get arbitrage opportunities from all configured bookmakers."""
+        return await odds_client.get_arbitrage_bets(
+            bookmakers=settings.bookmakers_list,
+            sport=sport,
+            min_profit=min_profit,
             limit=limit,
         )
 
