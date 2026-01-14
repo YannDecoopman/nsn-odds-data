@@ -1,6 +1,6 @@
 # nsn-odds-data
 
-Microservice for fetching sports betting odds and generating static JSON files.
+Microservice for fetching sports betting odds from Odds-API.io.
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ docker-compose up -d
 docker-compose exec app alembic upgrade head
 
 # Test
-curl http://localhost:8000/health
+curl http://localhost:8002/health
 ```
 
 ## API Endpoints
@@ -27,11 +27,23 @@ curl http://localhost:8000/health
 |--------|----------|-------------|
 | GET | `/health` | Health check |
 | GET | `/sports` | List available sports |
-| GET | `/events?sport=football` | List events |
 | GET | `/bookmakers` | List configured bookmakers |
+| GET | `/events` | List events with filters and pagination |
+| GET | `/events/live` | Live events with scores (30s cache) |
+| GET | `/leagues` | List leagues by sport |
+| GET | `/odds` | Get odds (1x2, asian_handicap, totals) |
 | POST | `/generate` | Request odds file generation |
 | GET | `/files/{id}` | Get file generation status |
 | GET | `/static/{path}` | Serve generated JSON |
+
+See [docs/API_REFERENCE.md](docs/API_REFERENCE.md) for full documentation.
+
+## Stack
+
+- Python 3.12 + FastAPI
+- PostgreSQL (asyncpg)
+- Redis (cache + ARQ queue)
+- Docker
 
 ## License
 
