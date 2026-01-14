@@ -67,7 +67,7 @@ async def search_events(
     filtered = [
         e
         for e in events
-        if query_lower in e.home_team.lower() or query_lower in e.away_team.lower()
+        if query_lower in e.home.lower() or query_lower in e.away.lower()
     ]
 
     # Limit results
