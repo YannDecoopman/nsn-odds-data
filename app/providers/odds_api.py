@@ -12,6 +12,7 @@ from app.schemas import (
     TotalsOutput,
 )
 from app.schemas.arbitrage import ArbitrageResponse
+from app.schemas.odds_movements import OddsMovementsResponse
 from app.schemas.value_bets import ValueBetsResponse
 from app.services.odds_client import odds_client
 
@@ -97,6 +98,19 @@ class OddsAPIProvider(ProviderInterface):
             sport=sport,
             min_profit=min_profit,
             limit=limit,
+        )
+
+    async def get_odds_movements(
+        self,
+        event_id: str,
+        bookmaker: str,
+        market: str = "ML",
+    ) -> OddsMovementsResponse | None:
+        """Get historical odds movements for an event."""
+        return await odds_client.get_odds_movements(
+            event_id=event_id,
+            bookmaker=bookmaker,
+            market=market,
         )
 
     def compute_hash(self, data: dict[str, Any]) -> str:

@@ -32,6 +32,7 @@ from app.schemas.arbitrage import (
     ArbitrageResponse,
     OptimalStake,
 )
+from app.schemas.odds_movements import OddsMovementsResponse, OddsSnapshot
 from app.schemas.value_bets import (
     ConsensusOdds,
     ValueBet,
@@ -967,6 +968,105 @@ class OddsAPIClient:
             )
         except Exception as e:
             logger.error(f"Transform arbitrage bet error: {e}")
+            return None
+
+    async def get_odds_movements(
+        self,
+        event_id: str,
+        bookmaker: str,
+        market: str = "ML",
+    ) -> OddsMovementsResponse | None:
+        """Fetch historical odds movements for an event.
+
+        Args:
+            event_id: Event identifier
+            bookmaker: Bookmaker to get movements from
+            market: Market type (ML, Totals, etc.)
+        """
+        data = await self._request(
+            "/odds/movements",
+            params={
+                "eventId": event_id,
+                "bookmaker": bookmaker,
+                "market": market,
+            },
+            cache_key=f"movements:{event_id}:{bookmaker}:{market}",
+            cache_ttl=300,  # 5 minutes
+        )
+
+        if not data or not isinstance(data, dict):
+            return None
+
+        return self._transform_odds_movements(data, event_id, bookmaker, market)
+
+    def _transform_odds_movements(
+        self,
+        raw: dict[str, Any],
+        event_id: str,
+        bookmaker: str,
+        market: str,
+    ) -> OddsMovementsResponse | None:
+        """Transform raw API response to OddsMovementsResponse."""
+        try:
+
+            def safe_float(val: Any, default: float = 0.0) -> float:
+                if val is None or val == "N/A" or val == "":
+                    return default
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return default
+
+            def parse_timestamp(ts: Any) -> datetime:
+                if isinstance(ts, (int, float)):
+                    return datetime.fromtimestamp(ts)
+                if isinstance(ts, str):
+                    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                return datetime.now()
+
+            def parse_snapshot(data: dict[str, Any]) -> OddsSnapshot:
+                return OddsSnapshot(
+                    home=safe_float(data.get("home")),
+                    draw=safe_float(data.get("draw")) if data.get("draw") else None,
+                    away=safe_float(data.get("away")),
+                    timestamp=parse_timestamp(data.get("timestamp", data.get("time"))),
+                )
+
+            # Parse opening odds
+            opening_data = raw.get("opening", {})
+            opening = parse_snapshot(opening_data) if opening_data else None
+
+            # Parse latest odds
+            latest_data = raw.get("latest", {})
+            latest = parse_snapshot(latest_data) if latest_data else None
+
+            # Parse movements array
+            movements_data = raw.get("movements", [])
+            movements = []
+            for m in movements_data:
+                if isinstance(m, dict):
+                    movements.append(parse_snapshot(m))
+
+            # If no opening/latest, use first/last movement
+            if not opening and movements:
+                opening = movements[0]
+            if not latest and movements:
+                latest = movements[-1]
+
+            # Need at least opening and latest
+            if not opening or not latest:
+                return None
+
+            return OddsMovementsResponse(
+                eventId=str(raw.get("eventId", event_id)),
+                bookmaker=raw.get("bookmaker", bookmaker),
+                market=raw.get("market", market),
+                opening=opening,
+                latest=latest,
+                movements=movements,
+            )
+        except Exception as e:
+            logger.error(f"Transform odds movements error: {e}")
             return None
 
 
