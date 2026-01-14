@@ -1,8 +1,8 @@
 services:
   app:
     build: .
-    ports:
-      - "8002:8000"
+    expose:
+      - "8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/odds_data
       - REDIS_URL=redis://redis:6379/0
@@ -15,6 +15,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    labels:
+      - "coolify.managed=true"
+      - "coolify.expose=true"
 
   db:
     image: postgres:16-alpine
