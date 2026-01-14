@@ -11,6 +11,15 @@ from app.schemas import (
     AsianHandicapLine,
     AsianHandicapOutput,
     BookmakerOdds,
+    BTTSBookmaker,
+    BTTSOdds,
+    BTTSOutput,
+    CorrectScoreBookmaker,
+    CorrectScoreOdds,
+    CorrectScoreOutput,
+    DoubleChanceBookmaker,
+    DoubleChanceOdds,
+    DoubleChanceOutput,
     EventData,
     EventResponse,
     EventStatus,
@@ -264,18 +273,18 @@ class OddsAPIClient:
         event_id: str,
         bookmakers: list[str],
         market: str = "1x2",
-    ) -> OddsOutput | AsianHandicapOutput | TotalsOutput | None:
+    ) -> OddsOutput | AsianHandicapOutput | TotalsOutput | BTTSOutput | CorrectScoreOutput | DoubleChanceOutput | None:
         """GET /odds - Get odds for a specific event."""
         # Map internal market names to API market names
-        api_market = (
-            "ML"
-            if market == "1x2"
-            else "Asian Handicap"
-            if market == "asian_handicap"
-            else "Totals"
-            if market == "totals"
-            else market
-        )
+        market_mapping = {
+            "1x2": "ML",
+            "asian_handicap": "Asian Handicap",
+            "totals": "Totals",
+            "btts": "Both Teams to Score",
+            "correct_score": "Correct Score",
+            "double_chance": "Double Chance",
+        }
+        api_market = market_mapping.get(market, market)
 
         params = {
             "eventId": event_id,
@@ -290,10 +299,16 @@ class OddsAPIClient:
             return None
 
         # Route to appropriate transformer based on market
-        if market == "asian_handicap":
-            return self._transform_asian_handicap(data)
-        elif market == "totals":
-            return self._transform_totals(data)
+        transformers = {
+            "asian_handicap": self._transform_asian_handicap,
+            "totals": self._transform_totals,
+            "btts": self._transform_btts,
+            "correct_score": self._transform_correct_score,
+            "double_chance": self._transform_double_chance,
+        }
+        transformer = transformers.get(market)
+        if transformer:
+            return transformer(data)
         return self._transform_odds(data, market)
 
     def _transform_odds(self, data: dict[str, Any], market: str) -> OddsOutput | None:
@@ -633,6 +648,235 @@ class OddsAPIClient:
             )
         except Exception as e:
             logger.error(f"Failed to transform totals odds: {e}")
+            return None
+
+    def _transform_btts(self, data: dict[str, Any]) -> BTTSOutput | None:
+        """Transform API response to BTTSOutput format."""
+        try:
+            sport_data = data.get("sport", {})
+            league_data = data.get("league", {})
+            date_str = data.get("date", data.get("commence_time", ""))
+
+            event = EventData(
+                id=str(data.get("id", "")),
+                sport=sport_data.get("slug", "football") if isinstance(sport_data, dict) else str(sport_data),
+                league=league_data.get("name") if isinstance(league_data, dict) else data.get("league"),
+                league_id=league_data.get("id") if isinstance(league_data, dict) else data.get("leagueId"),
+                home_team=data.get("home", data.get("home_team", "")),
+                away_team=data.get("away", data.get("away_team", "")),
+                commence_time=datetime.fromisoformat(date_str.replace("Z", "+00:00")) if date_str else datetime.now(),
+            )
+
+            bookmakers_data = data.get("bookmakers", {})
+            bookmaker_odds = []
+
+            if isinstance(bookmakers_data, dict):
+                for bm_name, markets in bookmakers_data.items():
+                    if not isinstance(markets, list):
+                        continue
+
+                    btts_market = next(
+                        (m for m in markets if m.get("name") in ["Both Teams to Score", "BTTS", "btts"]),
+                        None,
+                    )
+
+                    if not btts_market:
+                        continue
+
+                    odds_data = btts_market.get("odds", {})
+                    if isinstance(odds_data, list) and odds_data:
+                        odds_data = odds_data[0]
+
+                    if not odds_data:
+                        continue
+
+                    try:
+                        yes_odds = float(odds_data.get("yes", 0))
+                        no_odds = float(odds_data.get("no", 0))
+
+                        if yes_odds > 0 and no_odds > 0:
+                            updated_str = btts_market.get("updatedAt", "")
+                            bookmaker_odds.append(
+                                BTTSBookmaker(
+                                    key=bm_name.lower().replace(" ", "_"),
+                                    name=bm_name,
+                                    odds=BTTSOdds(yes=yes_odds, no=no_odds),
+                                    updated_at=datetime.fromisoformat(updated_str.replace("Z", "+00:00")) if updated_str else datetime.now(),
+                                )
+                            )
+                    except (ValueError, TypeError):
+                        continue
+
+            if not bookmaker_odds:
+                return None
+
+            return BTTSOutput(
+                event=event,
+                market="btts",
+                bookmakers=bookmaker_odds,
+                metadata=OddsMetadata(
+                    generated_at=datetime.now(),
+                    is_ended=data.get("completed", False),
+                    hash="",
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Failed to transform BTTS odds: {e}")
+            return None
+
+    def _transform_correct_score(self, data: dict[str, Any]) -> CorrectScoreOutput | None:
+        """Transform API response to CorrectScoreOutput format."""
+        try:
+            sport_data = data.get("sport", {})
+            league_data = data.get("league", {})
+            date_str = data.get("date", data.get("commence_time", ""))
+
+            event = EventData(
+                id=str(data.get("id", "")),
+                sport=sport_data.get("slug", "football") if isinstance(sport_data, dict) else str(sport_data),
+                league=league_data.get("name") if isinstance(league_data, dict) else data.get("league"),
+                league_id=league_data.get("id") if isinstance(league_data, dict) else data.get("leagueId"),
+                home_team=data.get("home", data.get("home_team", "")),
+                away_team=data.get("away", data.get("away_team", "")),
+                commence_time=datetime.fromisoformat(date_str.replace("Z", "+00:00")) if date_str else datetime.now(),
+            )
+
+            bookmakers_data = data.get("bookmakers", {})
+            bookmaker_odds = []
+
+            if isinstance(bookmakers_data, dict):
+                for bm_name, markets in bookmakers_data.items():
+                    if not isinstance(markets, list):
+                        continue
+
+                    cs_market = next(
+                        (m for m in markets if m.get("name") in ["Correct Score", "correct_score"]),
+                        None,
+                    )
+
+                    if not cs_market:
+                        continue
+
+                    odds_list = cs_market.get("odds", [])
+                    if not isinstance(odds_list, list):
+                        continue
+
+                    scores = []
+                    for score_entry in odds_list:
+                        try:
+                            score = score_entry.get("score", "")
+                            odds_val = float(score_entry.get("odds", 0))
+                            if score and odds_val > 0:
+                                scores.append(CorrectScoreOdds(score=score, odds=odds_val))
+                        except (ValueError, TypeError):
+                            continue
+
+                    if scores:
+                        updated_str = cs_market.get("updatedAt", "")
+                        bookmaker_odds.append(
+                            CorrectScoreBookmaker(
+                                key=bm_name.lower().replace(" ", "_"),
+                                name=bm_name,
+                                scores=scores,
+                                updated_at=datetime.fromisoformat(updated_str.replace("Z", "+00:00")) if updated_str else datetime.now(),
+                            )
+                        )
+
+            if not bookmaker_odds:
+                return None
+
+            return CorrectScoreOutput(
+                event=event,
+                market="correct_score",
+                bookmakers=bookmaker_odds,
+                metadata=OddsMetadata(
+                    generated_at=datetime.now(),
+                    is_ended=data.get("completed", False),
+                    hash="",
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Failed to transform correct score odds: {e}")
+            return None
+
+    def _transform_double_chance(self, data: dict[str, Any]) -> DoubleChanceOutput | None:
+        """Transform API response to DoubleChanceOutput format."""
+        try:
+            sport_data = data.get("sport", {})
+            league_data = data.get("league", {})
+            date_str = data.get("date", data.get("commence_time", ""))
+
+            event = EventData(
+                id=str(data.get("id", "")),
+                sport=sport_data.get("slug", "football") if isinstance(sport_data, dict) else str(sport_data),
+                league=league_data.get("name") if isinstance(league_data, dict) else data.get("league"),
+                league_id=league_data.get("id") if isinstance(league_data, dict) else data.get("leagueId"),
+                home_team=data.get("home", data.get("home_team", "")),
+                away_team=data.get("away", data.get("away_team", "")),
+                commence_time=datetime.fromisoformat(date_str.replace("Z", "+00:00")) if date_str else datetime.now(),
+            )
+
+            bookmakers_data = data.get("bookmakers", {})
+            bookmaker_odds = []
+
+            if isinstance(bookmakers_data, dict):
+                for bm_name, markets in bookmakers_data.items():
+                    if not isinstance(markets, list):
+                        continue
+
+                    dc_market = next(
+                        (m for m in markets if m.get("name") in ["Double Chance", "double_chance"]),
+                        None,
+                    )
+
+                    if not dc_market:
+                        continue
+
+                    odds_data = dc_market.get("odds", {})
+                    if isinstance(odds_data, list) and odds_data:
+                        odds_data = odds_data[0]
+
+                    if not odds_data:
+                        continue
+
+                    try:
+                        # API may use different keys: 1X, X2, 12 or home_draw, draw_away, home_away
+                        home_draw = float(odds_data.get("1X", odds_data.get("home_draw", 0)))
+                        draw_away = float(odds_data.get("X2", odds_data.get("draw_away", 0)))
+                        home_away = float(odds_data.get("12", odds_data.get("home_away", 0)))
+
+                        if home_draw > 0 and draw_away > 0 and home_away > 0:
+                            updated_str = dc_market.get("updatedAt", "")
+                            bookmaker_odds.append(
+                                DoubleChanceBookmaker(
+                                    key=bm_name.lower().replace(" ", "_"),
+                                    name=bm_name,
+                                    odds=DoubleChanceOdds(
+                                        home_draw=home_draw,
+                                        draw_away=draw_away,
+                                        home_away=home_away,
+                                    ),
+                                    updated_at=datetime.fromisoformat(updated_str.replace("Z", "+00:00")) if updated_str else datetime.now(),
+                                )
+                            )
+                    except (ValueError, TypeError):
+                        continue
+
+            if not bookmaker_odds:
+                return None
+
+            return DoubleChanceOutput(
+                event=event,
+                market="double_chance",
+                bookmakers=bookmaker_odds,
+                metadata=OddsMetadata(
+                    generated_at=datetime.now(),
+                    is_ended=data.get("completed", False),
+                    hash="",
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Failed to transform double chance odds: {e}")
             return None
 
     async def get_value_bets_for_bookmaker(

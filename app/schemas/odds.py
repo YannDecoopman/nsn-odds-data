@@ -93,3 +93,82 @@ class TotalsOutput(BaseModel):
     market: str = "totals"
     bookmakers: list[TotalsBookmaker]
     metadata: OddsMetadata
+
+
+# Both Teams To Score (BTTS) schemas
+class BTTSOdds(BaseModel):
+    """BTTS odds values."""
+
+    yes: float
+    no: float
+
+
+class BTTSBookmaker(BaseModel):
+    """Bookmaker with BTTS odds."""
+
+    key: str
+    name: str
+    odds: BTTSOdds
+    updated_at: datetime
+
+
+class BTTSOutput(BaseModel):
+    """Final JSON output format for BTTS static files."""
+
+    event: EventData
+    market: str = "btts"
+    bookmakers: list[BTTSBookmaker]
+    metadata: OddsMetadata
+
+
+# Correct Score schemas
+class CorrectScoreOdds(BaseModel):
+    """Single correct score odds."""
+
+    score: str  # "1-0", "2-1", "Other"
+    odds: float
+
+
+class CorrectScoreBookmaker(BaseModel):
+    """Bookmaker with correct score odds."""
+
+    key: str
+    name: str
+    scores: list[CorrectScoreOdds]
+    updated_at: datetime
+
+
+class CorrectScoreOutput(BaseModel):
+    """Final JSON output format for Correct Score static files."""
+
+    event: EventData
+    market: str = "correct_score"
+    bookmakers: list[CorrectScoreBookmaker]
+    metadata: OddsMetadata
+
+
+# Double Chance schemas
+class DoubleChanceOdds(BaseModel):
+    """Double chance odds values."""
+
+    home_draw: float  # 1X
+    draw_away: float  # X2
+    home_away: float  # 12
+
+
+class DoubleChanceBookmaker(BaseModel):
+    """Bookmaker with double chance odds."""
+
+    key: str
+    name: str
+    odds: DoubleChanceOdds
+    updated_at: datetime
+
+
+class DoubleChanceOutput(BaseModel):
+    """Final JSON output format for Double Chance static files."""
+
+    event: EventData
+    market: str = "double_chance"
+    bookmakers: list[DoubleChanceBookmaker]
+    metadata: OddsMetadata

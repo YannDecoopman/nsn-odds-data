@@ -6,6 +6,9 @@ from app.config import settings
 from app.providers.base import ProviderInterface
 from app.schemas import (
     AsianHandicapOutput,
+    BTTSOutput,
+    CorrectScoreOutput,
+    DoubleChanceOutput,
     EventResponse,
     LiveEventResponse,
     OddsOutput,
@@ -60,7 +63,7 @@ class OddsAPIProvider(ProviderInterface):
         event_id: str,
         bookmakers: list[str] | None = None,
         market: str = "1x2",
-    ) -> OddsOutput | AsianHandicapOutput | TotalsOutput | None:
+    ) -> OddsOutput | AsianHandicapOutput | TotalsOutput | BTTSOutput | CorrectScoreOutput | DoubleChanceOutput | None:
         if bookmakers is None:
             bookmakers = settings.bookmakers_list
 
