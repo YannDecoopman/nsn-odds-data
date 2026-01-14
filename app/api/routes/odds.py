@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.config import settings
 from app.providers.odds_api import odds_api_provider
+from app.schemas.common import Market
 from app.schemas.odds_movements import OddsMovementsResponse
 
 router = APIRouter()
@@ -10,7 +11,7 @@ router = APIRouter()
 @router.get("")
 async def get_odds(
     event_id: str = Query(..., alias="eventId"),
-    market: str = "1x2",
+    market: Market = Market.ML,
     bookmakers: str | None = None,
 ):
     """Get odds for an event."""
@@ -18,7 +19,7 @@ async def get_odds(
     return await odds_api_provider.get_odds(
         event_id=event_id,
         bookmakers=bm_list,
-        market=market,
+        market=market.value,
     )
 
 

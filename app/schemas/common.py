@@ -1,4 +1,17 @@
+from enum import Enum
+
 from pydantic import BaseModel
+
+
+class Market(str, Enum):
+    """Supported betting markets."""
+
+    ML = "1x2"
+    ASIAN_HANDICAP = "asian_handicap"
+    TOTALS = "totals"
+    BTTS = "btts"
+    CORRECT_SCORE = "correct_score"
+    DOUBLE_CHANCE = "double_chance"
 
 
 class SportInfo(BaseModel):

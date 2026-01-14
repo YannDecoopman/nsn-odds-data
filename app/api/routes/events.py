@@ -47,3 +47,33 @@ async def list_live_events(
     """Get live events with scores."""
     events = await odds_api_provider.get_live_events(sport=sport)
     return LiveEventsResponse(data=events[:limit])
+
+
+@router.get("/search", response_model=EventListResponse)
+async def search_events(
+    q: str = Query(..., min_length=2, description="Search query (team name)"),
+    sport: str | None = None,
+    limit: int = Query(10, le=50),
+):
+    """Search events by team name.
+
+    Performs case-insensitive search on home_team and away_team fields.
+    """
+    # Get all events (optionally filtered by sport)
+    events, _ = await odds_api_provider.get_events(sport=sport)
+
+    # Filter by search query (case-insensitive)
+    query_lower = q.lower()
+    filtered = [
+        e
+        for e in events
+        if query_lower in e.home_team.lower() or query_lower in e.away_team.lower()
+    ]
+
+    # Limit results
+    results = filtered[:limit]
+
+    return EventListResponse(
+        data=results,
+        pagination=PaginationInfo(total=len(filtered), limit=limit, offset=0),
+    )
