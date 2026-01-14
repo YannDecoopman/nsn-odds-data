@@ -2,26 +2,37 @@
 
 Microservice for fetching and serving sports betting odds from Odds-API.io.
 
-## TODO - Prochaine session
+## Endpoints
 
-**Objectif** : Implémenter les endpoints définis dans `docs/API_SPEC.md` pour supporter les 18 blocs du plugin WordPress.
+### P0 (Done)
+- `GET /events` - List events with filters (sport, league, status, date_from, date_to)
+- `GET /events/live` - Live events with scores
+- `GET /odds?eventId=&market=` - Odds for event (1x2, asian_handicap, totals)
+- `GET /leagues` - Available leagues
 
-### Phase 1 (P0) - À faire maintenant
-1. `GET /events` - Ajouter filtres (sport, league, status, date_from, date_to, pagination)
-2. `GET /events/live` - Nouveau endpoint (proxy Odds-API.io avec cache 30s)
-3. `GET /odds` - Support multi-marchés (Asian Handicap, Totals en plus de ML)
-4. `GET /leagues` - Nouveau endpoint
+### P1 (Done)
+- `GET /value-bets` - Value bets detection (multi-bookmaker aggregation)
+- `GET /arbitrage-bets` - Arbitrage opportunities
+- `GET /odds/movements` - Historical odds movements
+- `GET /odds?market=btts` - Both Teams To Score
+- `GET /odds?market=correct_score` - Correct Score
+- `GET /odds?market=double_chance` - Double Chance
 
-### Fichiers à modifier
-- `app/api/routes.py` - Ajouter les routes
-- `app/schemas/` - Créer schemas pour nouveaux endpoints
-- `app/services/odds_client.py` - Support multi-marchés
+### P2-P3 (TODO)
+- `GET /events/search` - Search events
+- WebSocket for real-time odds
 
-### Commandes de démarrage
+## Commandes
+
 ```bash
-cd /Users/yann-mbp/Documents/Projets/wodds/nsn-odds-data
+# Start
 docker-compose up -d
-uv run uvicorn app.main:app --reload --port 8002
+
+# Rebuild after code changes
+docker-compose build app && docker-compose up -d app
+
+# Logs
+docker-compose logs -f app
 ```
 
 ---
@@ -140,6 +151,7 @@ Request → RequestData (DB) → StaticFile (DB) → ARQ Task → JSON file
 
 ## Notes
 
-- MVP: Football 1X2 only
+- All sports supported via Odds-API.io
+- Markets: 1x2, asian_handicap, totals, btts, correct_score, double_chance
 - Brazilian bookmakers: betano, sportingbet, betfair, bet365
 - WordPress plugin: Phase 2 (see nsn-soccer-data for reference)
