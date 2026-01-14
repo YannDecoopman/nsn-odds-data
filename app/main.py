@@ -6,6 +6,7 @@ from arq.connections import RedisSettings
 from fastapi import FastAPI
 
 from app.api.routes import events, leagues, odds, static_files
+from app.api.routes import value_bets
 from app.config import settings
 from app.providers.odds_api import odds_api_provider
 from app.schemas import BookmakerResponse, SportResponse
@@ -44,6 +45,7 @@ app.include_router(events.router, prefix="/events", tags=["events"])
 app.include_router(odds.router, prefix="/odds", tags=["odds"])
 app.include_router(leagues.router, prefix="/leagues", tags=["leagues"])
 app.include_router(static_files.router, tags=["static"])
+app.include_router(value_bets.router, prefix="/value-bets", tags=["analysis"])
 
 
 @app.get("/health")

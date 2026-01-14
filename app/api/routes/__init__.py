@@ -1,3 +1,1 @@
-from app.api.routes import events, leagues, odds, static_files
-
-__all__ = ["events", "leagues", "odds", "static_files"]
+# Routes module - imports handled directly by main.py

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -23,6 +24,13 @@ from app.schemas import (
     TotalsBookmaker,
     TotalsLine,
     TotalsOutput,
+)
+from app.schemas.value_bets import (
+    ConsensusOdds,
+    ValueBet,
+    ValueBetEvent,
+    ValueBetOdds,
+    ValueBetsResponse,
 )
 from app.services.cache import cache_service
 
@@ -617,6 +625,187 @@ class OddsAPIClient:
             )
         except Exception as e:
             logger.error(f"Failed to transform totals odds: {e}")
+            return None
+
+    async def get_value_bets_for_bookmaker(
+        self,
+        bookmaker: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch value bets for a single bookmaker (cached 2min)."""
+        data = await self._request(
+            "/value-bets",
+            params={
+                "bookmaker": bookmaker,
+                "includeEventDetails": "true",
+            },
+            cache_key=f"value_bets:{bookmaker}",
+            cache_ttl=120,  # 2 minutes
+        )
+        return data if isinstance(data, list) else []
+
+    async def get_value_bets(
+        self,
+        bookmakers: list[str],
+        sport: str | None = None,
+        league: str | None = None,
+        min_ev: float = 2.0,
+        limit: int = 10,
+    ) -> ValueBetsResponse:
+        """Fetch value bets from multiple bookmakers in parallel.
+
+        Args:
+            bookmakers: List of bookmaker keys to query
+            sport: Filter by sport slug
+            league: Filter by league slug
+            min_ev: Minimum expected value threshold
+            limit: Maximum results to return
+
+        Returns:
+            ValueBetsResponse with filtered and sorted value bets
+        """
+        # Parallel fetch for all bookmakers
+        tasks = [self.get_value_bets_for_bookmaker(bm) for bm in bookmakers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Merge all results
+        all_bets: list[dict[str, Any]] = []
+        for result in results:
+            if isinstance(result, list):
+                all_bets.extend(result)
+            # Silently ignore exceptions (bookmaker might not have value bets)
+
+        # Transform and filter
+        value_bets: list[ValueBet] = []
+        for raw_bet in all_bets:
+            try:
+                bet = self._transform_value_bet(raw_bet)
+                if bet is None:
+                    continue
+
+                # Apply filters
+                if bet.expected_value < min_ev:
+                    continue
+                if sport and bet.event.sport.slug.lower() != sport.lower():
+                    continue
+                if league and bet.event.league.slug.lower() != league.lower():
+                    continue
+
+                value_bets.append(bet)
+            except Exception as e:
+                logger.warning(f"Failed to parse value bet: {e}")
+                continue
+
+        # Sort by EV descending and limit
+        value_bets.sort(key=lambda x: x.expected_value, reverse=True)
+
+        return ValueBetsResponse(data=value_bets[:limit])
+
+    def _transform_value_bet(self, raw: dict[str, Any]) -> ValueBet | None:
+        """Transform raw API response to ValueBet schema.
+
+        API format example:
+        {
+            "id": "64051699-Spread-home-Bet365--3",
+            "expectedValue": 100.64,
+            "expectedValueUpdatedAt": "2026-01-14T18:38:38.408Z",
+            "betSide": "home",
+            "market": {"name": "Spread", "hdp": -3, "home": "1.888", ...},
+            "bookmaker": "Bet365",
+            "bookmakerOdds": {"home": "1.90", "away": "1.90", "hdp": "-3", "href": "..."},
+            "eventId": 64051699,
+            "event": {
+                "home": "Team A", "away": "Team B",
+                "date": "2026-01-15T00:30:00Z",
+                "sport": "Basketball",  # String, not object!
+                "league": "USA - NCAA"   # String, not object!
+            }
+        }
+        """
+        try:
+            event_data = raw.get("event", {})
+            if not isinstance(event_data, dict):
+                return None
+
+            # Sport and league are strings in the API response
+            sport_str = event_data.get("sport", "")
+            league_str = event_data.get("league", "")
+
+            bm_odds = raw.get("bookmakerOdds", {})
+            if not isinstance(bm_odds, dict):
+                bm_odds = {}
+
+            # Market contains consensus odds
+            market_data = raw.get("market", {})
+            if not isinstance(market_data, dict):
+                market_data = {}
+
+            # Parse timestamp
+            ev_updated_str = raw.get("expectedValueUpdatedAt", "")
+            ev_updated = (
+                datetime.fromisoformat(ev_updated_str.replace("Z", "+00:00"))
+                if ev_updated_str
+                else datetime.now()
+            )
+
+            # Parse event date
+            event_date_str = event_data.get("date", "")
+            event_date = (
+                datetime.fromisoformat(event_date_str.replace("Z", "+00:00"))
+                if event_date_str
+                else datetime.now()
+            )
+
+            # Parse market name
+            market_name = market_data.get("name", "ML") if isinstance(market_data, dict) else "ML"
+
+            # Helper functions
+            def to_slug(s: str) -> str:
+                return s.lower().replace(" ", "-").replace(",", "").replace(".", "")
+
+            def safe_float(val: Any, default: float = 0.0) -> float:
+                """Safely convert to float, handling 'N/A' and other invalid values."""
+                if val is None or val == "N/A" or val == "":
+                    return default
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return default
+
+            return ValueBet(
+                id=raw.get("id", f"vb_{raw.get('eventId', '')}_{raw.get('bookmaker', '')}"),
+                eventId=str(raw.get("eventId", "")),
+                bookmaker=raw.get("bookmaker", ""),
+                market=market_name,
+                betSide=raw.get("betSide", ""),
+                expectedValue=safe_float(raw.get("expectedValue"), 0),
+                expectedValueUpdatedAt=ev_updated,
+                bookmakerOdds=ValueBetOdds(
+                    home=safe_float(bm_odds.get("home")),
+                    draw=safe_float(bm_odds.get("draw")) if bm_odds.get("draw") and bm_odds.get("draw") != "N/A" else None,
+                    away=safe_float(bm_odds.get("away")),
+                    homeDirectLink=bm_odds.get("href"),
+                ),
+                consensusOdds=ConsensusOdds(
+                    home=safe_float(market_data.get("home")),
+                    draw=safe_float(market_data.get("draw")) if market_data.get("draw") and market_data.get("draw") != "N/A" else None,
+                    away=safe_float(market_data.get("away")),
+                ),
+                event=ValueBetEvent(
+                    home=event_data.get("home", ""),
+                    away=event_data.get("away", ""),
+                    date=event_date,
+                    sport=SportInfo(
+                        name=sport_str if isinstance(sport_str, str) else "",
+                        slug=to_slug(sport_str) if isinstance(sport_str, str) else "",
+                    ),
+                    league=LeagueInfo(
+                        name=league_str if isinstance(league_str, str) else "",
+                        slug=to_slug(league_str) if isinstance(league_str, str) else "",
+                    ),
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Transform value bet error: {e}")
             return None
 
 

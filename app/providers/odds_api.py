@@ -11,6 +11,7 @@ from app.schemas import (
     OddsOutput,
     TotalsOutput,
 )
+from app.schemas.value_bets import ValueBetsResponse
 from app.services.odds_client import odds_client
 
 
@@ -65,6 +66,22 @@ class OddsAPIProvider(ProviderInterface):
             event_id=event_id,
             bookmakers=bookmakers,
             market=market,
+        )
+
+    async def get_value_bets(
+        self,
+        sport: str | None = None,
+        league: str | None = None,
+        min_ev: float = 2.0,
+        limit: int = 10,
+    ) -> ValueBetsResponse:
+        """Get value bets from all configured bookmakers."""
+        return await odds_client.get_value_bets(
+            bookmakers=settings.bookmakers_list,
+            sport=sport,
+            league=league,
+            min_ev=min_ev,
+            limit=limit,
         )
 
     def compute_hash(self, data: dict[str, Any]) -> str:
