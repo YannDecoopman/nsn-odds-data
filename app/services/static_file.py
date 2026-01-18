@@ -141,6 +141,10 @@ class StaticFileService:
         static_file.hash = new_hash
         static_file.last_modified = int(datetime.now().timestamp())
 
+        # Update event_date from odds data (for intelligent refresh frequency)
+        if hasattr(odds_data, 'event') and hasattr(odds_data.event, 'commence_time'):
+            request_data.event_date = odds_data.event.commence_time
+
         # Check if event ended
         if odds_data.metadata.is_ended:
             request_data.is_ended = True

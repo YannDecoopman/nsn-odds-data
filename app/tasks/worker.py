@@ -41,8 +41,15 @@ async def generate_static_file_task(ctx: dict, static_file_id: UUID, bookmakers:
 
 
 async def refresh_active_odds(ctx: dict) -> dict:
-    """Scheduled task to refresh all active (non-ended) odds files."""
-    logger.info("Starting odds refresh job")
+    """Scheduled task to refresh odds files based on intelligent frequency.
+
+    Frequency is determined by event date:
+    - LIVE (today): refresh every 5 minutes
+    - HOURLY (1-5 days away): refresh every hour
+    - DAILY (5+ days away): refresh once per day
+    - NONE (ended): no refresh
+    """
+    logger.info("Starting intelligent odds refresh job")
 
     async with async_session_maker() as db:
         # Get all active request_data
@@ -50,10 +57,16 @@ async def refresh_active_odds(ctx: dict) -> dict:
         result = await db.execute(stmt)
         active_requests = result.scalars().all()
 
-        success_count = 0
+        refreshed_count = 0
+        skipped_count = 0
         error_count = 0
 
         for request_data in active_requests:
+            # Check if refresh is needed based on frequency
+            if not request_data.needs_refresh():
+                skipped_count += 1
+                continue
+
             # Get static file
             stmt = select(StaticFile).where(StaticFile.request_data_id == request_data.id)
             result = await db.execute(stmt)
@@ -70,15 +83,21 @@ async def refresh_active_odds(ctx: dict) -> dict:
                     static_file=static_file,
                 )
                 if success:
-                    success_count += 1
+                    # Update last_refreshed timestamp
+                    from datetime import datetime
+                    request_data.last_refreshed = datetime.now()
+                    refreshed_count += 1
             except Exception as e:
                 logger.error(f"Failed to refresh {request_data.provider_id}: {e}")
                 error_count += 1
 
         await db.commit()
 
-    logger.info(f"Odds refresh completed: {success_count} success, {error_count} errors")
-    return {"success": success_count, "errors": error_count}
+    logger.info(
+        f"Odds refresh completed: {refreshed_count} refreshed, "
+        f"{skipped_count} skipped (not due), {error_count} errors"
+    )
+    return {"refreshed": refreshed_count, "skipped": skipped_count, "errors": error_count}
 
 
 async def refresh_upcoming_events(ctx: dict) -> dict:
@@ -107,12 +126,13 @@ class WorkerSettings:
 
     functions = [generate_static_file_task]
     cron_jobs = [
-        # Disabled: was running every 5 min, burning through 100 req/h rate limit
-        # cron(refresh_active_odds, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
-        # Run once per hour instead (minute 0) to stay under free tier limits
-        cron(refresh_active_odds, minute={0}),
-        # Refresh upcoming events cache (offset by 5 min to avoid overlap)
-        cron(refresh_upcoming_events, minute={5}),
+        # Intelligent refresh: runs every 5 min but only refreshes what's due
+        # - LIVE events (today): refreshed every 5 min
+        # - HOURLY events (1-5 days): refreshed every hour
+        # - DAILY events (5+ days): refreshed once per day
+        cron(refresh_active_odds, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
+        # Refresh upcoming events cache (offset by 2 min to avoid overlap)
+        cron(refresh_upcoming_events, minute={2}),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10
