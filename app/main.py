@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from arq import create_pool
@@ -23,6 +24,7 @@ from app.exceptions import (
 from app.providers.odds_api import odds_api_provider
 from app.schemas import BookmakerResponse, SportResponse
 from app.services.cache import cache_service
+from app.services.metrics import metrics_service
 from app.services.rate_limiter import limiter
 
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +58,30 @@ app = FastAPI(
 # Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# Metrics middleware
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """Track request metrics."""
+    # Skip metrics for health/metrics endpoints
+    if request.url.path in ("/health", "/metrics"):
+        return await call_next(request)
+
+    start_time = time.time()
+    await metrics_service.track_request()
+
+    response = await call_next(request)
+
+    # Track latency
+    latency_ms = (time.time() - start_time) * 1000
+    await metrics_service.track_latency(latency_ms)
+
+    # Track errors
+    if response.status_code >= 400:
+        await metrics_service.track_error()
+
+    return response
 
 
 # Exception handlers
@@ -144,3 +170,16 @@ async def get_bookmakers():
         BookmakerResponse(key=bm, name=bm.title(), region="br")
         for bm in settings.bookmakers_list
     ]
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Get API metrics (requests, latency, cache stats)."""
+    return await metrics_service.get_metrics()
+
+
+@app.post("/metrics/reset")
+async def reset_metrics():
+    """Reset all metrics counters."""
+    await metrics_service.reset()
+    return {"status": "reset"}

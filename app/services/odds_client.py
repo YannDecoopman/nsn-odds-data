@@ -11,6 +11,7 @@ from app.exceptions import (
     ProviderTimeoutError,
     RateLimitError,
 )
+from app.services.metrics import metrics_service
 from app.schemas import (
     AsianHandicapBookmaker,
     AsianHandicapLine,
@@ -88,6 +89,9 @@ class OddsAPIClient:
             request_params.update(params)
 
         try:
+            # Track external API call
+            await metrics_service.track_api_call()
+
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, params=request_params)
                 response.raise_for_status()

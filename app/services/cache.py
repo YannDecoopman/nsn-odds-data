@@ -15,14 +15,27 @@ class CacheService:
     def __init__(self):
         self._redis: redis.Redis | None = None
 
-    async def get_client(self) -> redis.Redis:
+    async def _get_redis(self) -> redis.Redis:
+        """Get raw Redis client (for metrics)."""
         if self._redis is None:
             self._redis = redis.from_url(settings.redis_url, decode_responses=True)
         return self._redis
 
-    async def get(self, key: str) -> Any | None:
+    async def get_client(self) -> redis.Redis:
+        return await self._get_redis()
+
+    async def get(self, key: str, track_metrics: bool = True) -> Any | None:
         client = await self.get_client()
         value = await client.get(key)
+
+        # Track cache hit/miss (lazy import to avoid circular deps)
+        if track_metrics:
+            from app.services.metrics import metrics_service
+            if value:
+                await metrics_service.track_cache_hit()
+            else:
+                await metrics_service.track_cache_miss()
+
         if value:
             return json.loads(value)
         return None
