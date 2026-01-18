@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from app.config import settings
 from app.providers.odds_api import odds_api_provider
@@ -12,12 +12,15 @@ from app.schemas.events import (
     PaginationInfo,
 )
 from app.services.cache import CACHE_KEY_UPCOMING, cache_service
+from app.services.rate_limiter import limiter
 
 router = APIRouter()
 
 
 @router.get("", response_model=EventListResponse)
+@limiter.limit(settings.rate_limit_default)
 async def list_events(
+    request: Request,
     sport: str | None = None,
     league: str | None = None,
     status: EventStatus | None = None,
@@ -45,7 +48,9 @@ async def list_events(
 
 
 @router.get("/live", response_model=LiveEventsResponse)
+@limiter.limit(settings.rate_limit_default)
 async def list_live_events(
+    request: Request,
     sport: str | None = None,
     limit: int = Query(20, le=100),
 ):
@@ -55,7 +60,9 @@ async def list_live_events(
 
 
 @router.get("/search", response_model=EventListResponse)
+@limiter.limit(settings.rate_limit_search)
 async def search_events(
+    request: Request,
     q: str = Query(..., min_length=2, description="Search query (team name)"),
     sport: str = Query("football", description="Sport to search in"),
     limit: int = Query(10, le=50),
@@ -85,7 +92,9 @@ async def search_events(
 
 
 @router.get("/upcoming", response_model=EventListResponse)
+@limiter.limit(settings.rate_limit_default)
 async def get_upcoming_events(
+    request: Request,
     leagues: str | None = Query(
         None, description="Comma-separated league filter (overrides default major leagues)"
     ),

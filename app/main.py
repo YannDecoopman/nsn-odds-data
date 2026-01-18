@@ -5,6 +5,8 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import arbitrage, events, leagues, odds, static_files, value_bets
 from app.config import settings
@@ -21,6 +23,7 @@ from app.exceptions import (
 from app.providers.odds_api import odds_api_provider
 from app.schemas import BookmakerResponse, SportResponse
 from app.services.cache import cache_service
+from app.services.rate_limiter import limiter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +52,10 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # Exception handlers

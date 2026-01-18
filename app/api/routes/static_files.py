@@ -7,12 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_db
 from app.config import settings
 from app.schemas.static_file import FileInfoResponse, GenerateRequest, GenerateResponse
+from app.services.rate_limiter import limiter
 from app.services.static_file import static_file_service
 
 router = APIRouter()
 
 
 @router.post("/generate", response_model=GenerateResponse)
+@limiter.limit(settings.rate_limit_heavy)
 async def generate_odds_file(
     request: GenerateRequest,
     req: Request,

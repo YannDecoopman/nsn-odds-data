@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     cache_ttl_odds: int = 60  # 1min
     cache_ttl_upcoming: int = 3600  # 1h
 
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    rate_limit_default: str = "60/minute"  # General endpoints
+    rate_limit_heavy: str = "10/minute"  # Heavy endpoints (generate, value-bets)
+    rate_limit_search: str = "30/minute"  # Search endpoints
+
     # Major leagues for upcoming events (Odds-API.io league names)
     major_leagues: list[str] = [
         "England - Premier League",

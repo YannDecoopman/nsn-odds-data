@@ -1,13 +1,17 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
+from app.config import settings
 from app.providers.odds_api import odds_api_provider
 from app.schemas.value_bets import ValueBetsResponse
+from app.services.rate_limiter import limiter
 
 router = APIRouter()
 
 
 @router.get("", response_model=ValueBetsResponse)
+@limiter.limit(settings.rate_limit_heavy)
 async def list_value_bets(
+    request: Request,
     sport: str | None = None,
     league: str | None = None,
     min_ev: float = Query(2.0, alias="minEV", ge=0, description="Minimum expected value"),
