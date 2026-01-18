@@ -1,15 +1,14 @@
 import logging
-from datetime import datetime, timedelta
 from uuid import UUID
 
 from arq import cron
 from arq.connections import RedisSettings
 from sqlalchemy import select
 
+from app.api.routes.events import _fetch_upcoming_events
 from app.config import settings
 from app.db import async_session_maker
 from app.models import RequestData, StaticFile
-from app.providers.odds_api import odds_api_provider
 from app.services.cache import CACHE_KEY_UPCOMING, cache_service
 from app.services.static_file import static_file_service
 
@@ -86,35 +85,17 @@ async def refresh_upcoming_events(ctx: dict) -> dict:
     """Scheduled task to refresh upcoming events cache for major leagues."""
     logger.info("Starting upcoming events refresh job")
 
-    # Get 7 days of events
-    date_from = datetime.now().strftime("%Y-%m-%d")
-    date_to = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-
     try:
-        events, total = await odds_api_provider.get_events(
-            sport="football",
-            date_from=date_from,
-            date_to=date_to,
-        )
+        events = await _fetch_upcoming_events()
 
-        # Filter by major leagues
-        filtered = [e for e in events if e.league.name in settings.major_leagues]
-
-        # Sort by date
-        filtered.sort(key=lambda e: e.date)
-
-        # Cache for 1 hour
         await cache_service.set(
             CACHE_KEY_UPCOMING,
-            [e.model_dump(mode="json") for e in filtered],
+            [e.model_dump(mode="json") for e in events],
             ttl=settings.cache_ttl_upcoming,
         )
 
-        logger.info(
-            f"Upcoming events refresh completed: {len(filtered)} events cached "
-            f"(filtered from {total} total)"
-        )
-        return {"cached": len(filtered), "total": total}
+        logger.info(f"Upcoming events refresh completed: {len(events)} events cached")
+        return {"cached": len(events)}
 
     except Exception as e:
         logger.error(f"Failed to refresh upcoming events: {e}")

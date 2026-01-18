@@ -130,9 +130,9 @@ async def get_upcoming_events(
 
 async def _fetch_upcoming_events() -> list[EventResponse]:
     """Fetch upcoming events for major leagues."""
-    # Get 7 days of events
-    date_from = datetime.now().strftime("%Y-%m-%d")
-    date_to = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    now = datetime.now()
+    date_from = now.strftime("%Y-%m-%d")
+    date_to = (now + timedelta(days=7)).strftime("%Y-%m-%d")
 
     events, _ = await odds_api_provider.get_events(
         sport="football",
