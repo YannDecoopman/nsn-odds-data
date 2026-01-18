@@ -57,14 +57,14 @@ async def list_live_events(
 @router.get("/search", response_model=EventListResponse)
 async def search_events(
     q: str = Query(..., min_length=2, description="Search query (team name)"),
-    sport: str | None = None,
+    sport: str = Query("football", description="Sport to search in"),
     limit: int = Query(10, le=50),
 ):
     """Search events by team name.
 
     Performs case-insensitive search on home_team and away_team fields.
     """
-    # Get all events (optionally filtered by sport)
+    # Get events for sport (required by Odds-API.io)
     events, _ = await odds_api_provider.get_events(sport=sport)
 
     # Filter by search query (case-insensitive)
