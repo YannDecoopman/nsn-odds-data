@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -55,9 +56,41 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# API Key authentication middleware
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    """Validate API key if enabled."""
+    # Skip auth for health/docs endpoints
+    if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        return await call_next(request)
+
+    # Skip if API key auth is disabled
+    if not settings.api_key_enabled or not settings.api_key:
+        return await call_next(request)
+
+    # Check API key
+    api_key = request.headers.get("X-API-Key")
+    if api_key != settings.api_key:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "UNAUTHORIZED", "message": "Invalid or missing API key"},
+        )
+
+    return await call_next(request)
 
 
 # Metrics middleware

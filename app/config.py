@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     rate_limit_heavy: str = "10/minute"  # Heavy endpoints (generate, value-bets)
     rate_limit_search: str = "30/minute"  # Search endpoints
 
+    # CORS
+    cors_origins: str = "*"  # Comma-separated origins or "*" for all
+
+    # API Key authentication
+    api_key: str = ""  # If set, requires X-API-Key header
+    api_key_enabled: bool = False
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        if self.cors_origins == "*":
+            return ["*"]
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # Major leagues for upcoming events (Odds-API.io league names)
     major_leagues: list[str] = [
         "England - Premier League",
