@@ -1,8 +1,8 @@
 services:
   app:
     build: .
-    expose:
-      - "8000"
+    ports:
+      - "8002:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/odds_data
       - REDIS_URL=redis://redis:6379/0

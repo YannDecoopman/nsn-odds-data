@@ -137,9 +137,15 @@ class OddsAPIClient:
             params["league"] = league
         if status:
             params["status"] = status
+        # API expects RFC3339 format (e.g. 2025-10-28T10:00:00Z)
         if date_from:
+            # Add time if only date provided
+            if "T" not in date_from:
+                date_from = f"{date_from}T00:00:00Z"
             params["from"] = date_from
         if date_to:
+            if "T" not in date_to:
+                date_to = f"{date_to}T23:59:59Z"
             params["to"] = date_to
 
         cache_key = f"events:{':'.join(f'{k}={v}' for k, v in sorted(params.items()) if v)}"

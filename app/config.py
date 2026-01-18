@@ -22,6 +22,22 @@ class Settings(BaseSettings):
     cache_ttl_sports: int = 86400  # 24h
     cache_ttl_events: int = 300  # 5min
     cache_ttl_odds: int = 60  # 1min
+    cache_ttl_upcoming: int = 3600  # 1h
+
+    # Major leagues for upcoming events (Odds-API.io league names)
+    major_leagues: list[str] = [
+        "England - Premier League",
+        "Germany - Bundesliga",
+        "Italy - Serie A",
+        "France - Ligue 1",
+        "Spain - LaLiga",
+        "Netherlands - Eredivisie",
+        "Portugal - Liga Portugal",
+        "Brazil - Brasileiro Serie A",
+        "International Clubs - UEFA Champions League",
+        "International Clubs - UEFA Europa League",
+        "International Clubs - UEFA Conference League",
+    ]
 
     @property
     def bookmakers_list(self) -> list[str]:

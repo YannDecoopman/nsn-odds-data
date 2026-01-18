@@ -5,6 +5,9 @@ import redis.asyncio as redis
 
 from app.config import settings
 
+# Cache keys
+CACHE_KEY_UPCOMING = "upcoming_events"
+
 
 class CacheService:
     """Redis cache wrapper."""
