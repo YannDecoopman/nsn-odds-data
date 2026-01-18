@@ -6,6 +6,11 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.exceptions import (
+    ProviderError,
+    ProviderTimeoutError,
+    RateLimitError,
+)
 from app.schemas import (
     AsianHandicapBookmaker,
     AsianHandicapLine,
@@ -93,12 +98,33 @@ class OddsAPIClient:
                     await cache_service.set(cache_key, data, cache_ttl)
 
                 return data
+        except httpx.TimeoutException:
+            raise ProviderTimeoutError(
+                f"Request to {endpoint} timed out",
+                timeout_seconds=30.0,
+                endpoint=endpoint,
+            )
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
-            return None
-        except Exception as e:
-            logger.error(f"Request error: {e}")
-            return None
+            status = e.response.status_code
+            body = e.response.text[:500]
+
+            if status == 429:
+                raise RateLimitError(
+                    "Odds-API.io rate limit exceeded",
+                    retry_after=int(e.response.headers.get("Retry-After", 60)),
+                )
+
+            raise ProviderError(
+                f"HTTP {status} from Odds-API.io",
+                status_code=status,
+                response_body=body,
+                endpoint=endpoint,
+            )
+        except httpx.RequestError as e:
+            raise ProviderError(
+                f"Network error: {e}",
+                endpoint=endpoint,
+            )
 
     async def get_sports(self) -> list[dict[str, Any]]:
         """GET /sports - List available sports."""

@@ -3,10 +3,21 @@ from contextlib import asynccontextmanager
 
 from arq import create_pool
 from arq.connections import RedisSettings
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.api.routes import arbitrage, events, leagues, odds, static_files, value_bets
 from app.config import settings
+from app.exceptions import (
+    CacheError,
+    DatabaseError,
+    EventNotFoundError,
+    OddsAPIError,
+    ProviderError,
+    ProviderTimeoutError,
+    RateLimitError,
+    ValidationError,
+)
 from app.providers.odds_api import odds_api_provider
 from app.schemas import BookmakerResponse, SportResponse
 from app.services.cache import cache_service
@@ -38,6 +49,57 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+# Exception handlers
+@app.exception_handler(RateLimitError)
+async def rate_limit_handler(request: Request, exc: RateLimitError):
+    logger.warning(f"Rate limit: {exc.message} - {exc.details}")
+    return JSONResponse(status_code=429, content=exc.to_dict())
+
+
+@app.exception_handler(ProviderTimeoutError)
+async def timeout_handler(request: Request, exc: ProviderTimeoutError):
+    logger.error(f"Provider timeout: {exc.message} - {exc.details}")
+    return JSONResponse(status_code=504, content=exc.to_dict())
+
+
+@app.exception_handler(EventNotFoundError)
+async def event_not_found_handler(request: Request, exc: EventNotFoundError):
+    logger.info(f"Event not found: {exc.event_id}")
+    return JSONResponse(status_code=404, content=exc.to_dict())
+
+
+@app.exception_handler(ProviderError)
+async def provider_error_handler(request: Request, exc: ProviderError):
+    logger.error(f"Provider error: {exc.message} - {exc.details}")
+    status = exc.status_code if exc.status_code and 400 <= exc.status_code < 600 else 502
+    return JSONResponse(status_code=status, content=exc.to_dict())
+
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    logger.info(f"Validation error: {exc.message} - {exc.details}")
+    return JSONResponse(status_code=400, content=exc.to_dict())
+
+
+@app.exception_handler(CacheError)
+async def cache_error_handler(request: Request, exc: CacheError):
+    logger.error(f"Cache error: {exc.message} - {exc.details}")
+    return JSONResponse(status_code=503, content=exc.to_dict())
+
+
+@app.exception_handler(DatabaseError)
+async def database_error_handler(request: Request, exc: DatabaseError):
+    logger.error(f"Database error: {exc.message} - {exc.details}")
+    return JSONResponse(status_code=503, content=exc.to_dict())
+
+
+@app.exception_handler(OddsAPIError)
+async def odds_api_error_handler(request: Request, exc: OddsAPIError):
+    logger.error(f"OddsAPI error: {exc.message} - {exc.details}")
+    return JSONResponse(status_code=500, content=exc.to_dict())
+
 
 # Include routers
 app.include_router(events.router, prefix="/events", tags=["events"])
