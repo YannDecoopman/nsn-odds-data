@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     cache_ttl_odds: int = 60  # 1min
     cache_ttl_upcoming: int = 3600  # 1h
 
+    # Data retention
+    retention_days_ended: int = 7  # Keep ended events for 7 days
+    clean_data_token: str = ""  # Token for /clean-data endpoint (optional)
+
     # Rate limiting
     rate_limit_enabled: bool = True
     rate_limit_default: str = "60/minute"  # General endpoints

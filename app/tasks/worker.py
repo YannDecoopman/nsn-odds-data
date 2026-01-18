@@ -121,6 +121,23 @@ async def refresh_upcoming_events(ctx: dict) -> dict:
         return {"error": str(e)}
 
 
+async def clean_old_data(ctx: dict) -> dict:
+    """Scheduled task to clean old ended events and orphan files."""
+    logger.info("Starting data cleanup job")
+
+    try:
+        async with async_session_maker() as db:
+            results = await static_file_service.clean_all(db)
+            await db.commit()
+
+        logger.info(f"Data cleanup completed: {results}")
+        return results
+
+    except Exception as e:
+        logger.error(f"Failed to clean old data: {e}")
+        return {"error": str(e)}
+
+
 class WorkerSettings:
     """ARQ worker settings."""
 
@@ -133,6 +150,8 @@ class WorkerSettings:
         cron(refresh_active_odds, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
         # Refresh upcoming events cache (offset by 2 min to avoid overlap)
         cron(refresh_upcoming_events, minute={2}),
+        # Daily cleanup at 3:00 AM
+        cron(clean_old_data, hour={3}, minute={0}),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10

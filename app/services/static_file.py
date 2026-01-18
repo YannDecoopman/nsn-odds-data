@@ -2,11 +2,11 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -170,6 +170,120 @@ class StaticFileService:
 
         with open(full_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    async def clean_ended_events(
+        self,
+        db: AsyncSession,
+        retention_days: int | None = None,
+    ) -> dict[str, int]:
+        """Remove ended events older than retention period.
+
+        Returns dict with counts of deleted items.
+        """
+        if retention_days is None:
+            retention_days = settings.retention_days_ended
+
+        cutoff_date = datetime.now() - timedelta(days=retention_days)
+        deleted_files = 0
+        deleted_requests = 0
+
+        # Find ended RequestData older than cutoff
+        stmt = select(RequestData).where(
+            RequestData.is_ended == True,
+            RequestData.updated_at < cutoff_date,
+        )
+        result = await db.execute(stmt)
+        old_requests = result.scalars().all()
+
+        for request_data in old_requests:
+            # Get associated static files
+            stmt = select(StaticFile).where(StaticFile.request_data_id == request_data.id)
+            result = await db.execute(stmt)
+            static_files = result.scalars().all()
+
+            # Delete files from disk
+            for sf in static_files:
+                full_path = self.static_path / sf.path
+                if full_path.exists():
+                    try:
+                        full_path.unlink()
+                        deleted_files += 1
+                        logger.debug(f"Deleted file: {sf.path}")
+                    except OSError as e:
+                        logger.warning(f"Failed to delete {sf.path}: {e}")
+
+            # Delete from DB (cascade will handle static_files)
+            await db.delete(request_data)
+            deleted_requests += 1
+
+        await db.flush()
+
+        logger.info(
+            f"Cleaned ended events: {deleted_requests} requests, {deleted_files} files"
+        )
+        return {"deleted_requests": deleted_requests, "deleted_files": deleted_files}
+
+    async def clean_orphan_files(self, db: AsyncSession) -> dict[str, int]:
+        """Remove files on disk that don't exist in DB."""
+        deleted_files = 0
+
+        # Get all paths from DB
+        stmt = select(StaticFile.path)
+        result = await db.execute(stmt)
+        db_paths = set(row[0] for row in result.all())
+
+        # Scan static directory
+        for file_path in self.static_path.rglob("*.json"):
+            relative_path = str(file_path.relative_to(self.static_path))
+            if relative_path not in db_paths:
+                try:
+                    file_path.unlink()
+                    deleted_files += 1
+                    logger.debug(f"Deleted orphan file: {relative_path}")
+                except OSError as e:
+                    logger.warning(f"Failed to delete orphan {relative_path}: {e}")
+
+        logger.info(f"Cleaned orphan files: {deleted_files}")
+        return {"deleted_orphan_files": deleted_files}
+
+    async def clean_empty_directories(self) -> dict[str, int]:
+        """Remove empty directories in static path."""
+        deleted_dirs = 0
+
+        # Walk bottom-up to delete empty dirs
+        for dir_path in sorted(self.static_path.rglob("*"), reverse=True):
+            if dir_path.is_dir() and not any(dir_path.iterdir()):
+                try:
+                    dir_path.rmdir()
+                    deleted_dirs += 1
+                    logger.debug(f"Deleted empty dir: {dir_path}")
+                except OSError:
+                    pass
+
+        logger.info(f"Cleaned empty directories: {deleted_dirs}")
+        return {"deleted_directories": deleted_dirs}
+
+    async def clean_all(
+        self,
+        db: AsyncSession,
+        retention_days: int | None = None,
+    ) -> dict[str, int]:
+        """Run all cleanup tasks."""
+        results = {}
+
+        # Clean ended events
+        ended_result = await self.clean_ended_events(db, retention_days)
+        results.update(ended_result)
+
+        # Clean orphan files
+        orphan_result = await self.clean_orphan_files(db)
+        results.update(orphan_result)
+
+        # Clean empty directories
+        dirs_result = await self.clean_empty_directories()
+        results.update(dirs_result)
+
+        return results
 
 
 static_file_service = StaticFileService()

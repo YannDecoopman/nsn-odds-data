@@ -1,7 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_db
@@ -88,3 +88,31 @@ async def serve_static_file(year: int, month: int, filename: str):
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path=full_path, media_type="application/json")
+
+
+@router.post("/clean-data/{token}")
+async def clean_data(
+    token: str,
+    request: Request,
+    retention_days: int | None = Query(None, description="Override retention days"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clean old data: ended events, orphan files, empty directories.
+
+    Requires token if CLEAN_DATA_TOKEN is set in environment.
+    """
+    # Validate token if configured
+    if settings.clean_data_token and token != settings.clean_data_token:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "FORBIDDEN", "message": "Invalid token"},
+        )
+
+    results = await static_file_service.clean_all(db, retention_days)
+    await db.commit()
+
+    return {
+        "status": "completed",
+        "retention_days": retention_days or settings.retention_days_ended,
+        **results,
+    }
