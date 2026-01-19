@@ -30,6 +30,12 @@ class OddsAPIProvider(ProviderInterface):
     async def get_sports(self) -> list[dict[str, Any]]:
         return await odds_client.get_sports()
 
+    async def get_bookmakers(self) -> list[dict[str, Any]]:
+        return await odds_client.get_bookmakers()
+
+    async def get_event(self, event_id: str) -> EventResponse | None:
+        return await odds_client.get_event(event_id)
+
     async def get_events(
         self,
         sport: str | None = None,
@@ -115,6 +121,48 @@ class OddsAPIProvider(ProviderInterface):
             bookmaker=bookmaker,
             market=market,
         )
+
+    async def get_odds_multi(
+        self,
+        event_ids: list[str],
+        bookmakers: list[str] | None = None,
+        market: str = "1x2",
+    ) -> list[OddsOutput | AsianHandicapOutput | TotalsOutput | BTTSOutput | CorrectScoreOutput | DoubleChanceOutput]:
+        """Get odds for multiple events in one request."""
+        if bookmakers is None:
+            bookmakers = settings.bookmakers_list
+        return await odds_client.get_odds_multi(
+            event_ids=event_ids,
+            bookmakers=bookmakers,
+            market=market,
+        )
+
+    async def get_odds_updated(
+        self,
+        since: int,
+        bookmaker: str | None = None,
+        sport: str | None = None,
+        market: str = "ML",
+    ) -> list[dict[str, Any]]:
+        """Get odds that changed since a timestamp."""
+        return await odds_client.get_odds_updated(
+            since=since,
+            bookmaker=bookmaker,
+            sport=sport,
+            market=market,
+        )
+
+    async def get_participants(
+        self,
+        sport: str,
+        search: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get participants/teams for a sport."""
+        return await odds_client.get_participants(sport=sport, search=search)
+
+    async def get_participant(self, participant_id: str) -> dict[str, Any] | None:
+        """Get a single participant by ID."""
+        return await odds_client.get_participant(participant_id)
 
     def compute_hash(self, data: dict[str, Any]) -> str:
         """Compute MD5 hash of odds data for change detection."""

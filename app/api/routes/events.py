@@ -137,6 +137,21 @@ async def get_upcoming_events(
     )
 
 
+@router.get("/{event_id}", response_model=EventResponse)
+@limiter.limit(settings.rate_limit_default)
+async def get_event_by_id(
+    request: Request,
+    event_id: str,
+):
+    """Get a single event by its ID."""
+    from app.exceptions import EventNotFoundError
+
+    event = await odds_api_provider.get_event(event_id)
+    if event is None:
+        raise EventNotFoundError(event_id=event_id)
+    return event
+
+
 async def _fetch_upcoming_events() -> list[EventResponse]:
     """Fetch upcoming events for major leagues."""
     now = datetime.now()

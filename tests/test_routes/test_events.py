@@ -270,3 +270,38 @@ async def test_upcoming_events_cache_miss(test_client, mock_cache_service, mock_
         response = await test_client.get("/events/upcoming")
 
         assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_get_event_by_id_success(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /events/{id} returns single event."""
+    event = EventResponse(
+        id="evt_123",
+        home="Team A",
+        away="Team B",
+        date=datetime(2026, 1, 20, 15, 0, 0),
+        status=EventStatus.NOT_STARTED,
+        sport=SportInfo(name="Football", slug="football"),
+        league=LeagueInfo(name="Premier League", slug="premier-league"),
+    )
+
+    with patch("app.api.routes.events.odds_api_provider") as mock_provider:
+        mock_provider.get_event = AsyncMock(return_value=event)
+
+        response = await test_client.get("/events/evt_123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == "evt_123"
+        assert data["home"] == "Team A"
+
+
+@pytest.mark.asyncio
+async def test_get_event_by_id_not_found(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /events/{id} returns 404 for unknown event."""
+    with patch("app.api.routes.events.odds_api_provider") as mock_provider:
+        mock_provider.get_event = AsyncMock(return_value=None)
+
+        response = await test_client.get("/events/evt_unknown")
+
+        assert response.status_code == 404

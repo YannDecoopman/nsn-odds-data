@@ -148,6 +148,50 @@ class OddsAPIClient:
         )
         return data if isinstance(data, list) else []
 
+    async def get_event(self, event_id: str) -> EventResponse | None:
+        """GET /events/{id} - Get a single event by ID."""
+        cache_key = f"event:{event_id}"
+        data = await self._request(
+            f"/events/{event_id}",
+            cache_key=cache_key,
+            cache_ttl=settings.cache_ttl_events,
+        )
+
+        if not data or not isinstance(data, dict):
+            return None
+
+        try:
+            sport_data = data.get("sport", {})
+            league_data = data.get("league", {})
+            date_str = data.get("date", data.get("commence_time", ""))
+
+            item_status = data.get("status", "not_started")
+            if item_status == "live":
+                event_status = EventStatus.IN_PROGRESS
+            elif item_status in ["ended", "settled", "completed"]:
+                event_status = EventStatus.ENDED
+            else:
+                event_status = EventStatus.NOT_STARTED
+
+            return EventResponse(
+                id=str(data.get("id", "")),
+                home=data.get("home", data.get("home_team", "")),
+                away=data.get("away", data.get("away_team", "")),
+                date=datetime.fromisoformat(date_str.replace("Z", "+00:00")) if date_str else datetime.now(),
+                status=event_status,
+                sport=SportInfo(
+                    name=sport_data.get("name", "Football") if isinstance(sport_data, dict) else "Football",
+                    slug=sport_data.get("slug", "football") if isinstance(sport_data, dict) else "football",
+                ),
+                league=LeagueInfo(
+                    name=league_data.get("name", "") if isinstance(league_data, dict) else (data.get("league") or ""),
+                    slug=league_data.get("slug", "") if isinstance(league_data, dict) else "",
+                ),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to parse event {event_id}: {e}")
+            return None
+
     async def get_events(
         self,
         sport: str | None = None,
@@ -1348,6 +1392,134 @@ class OddsAPIClient:
         except Exception as e:
             logger.error(f"Transform odds movements error: {e}")
             return None
+
+    async def get_odds_multi(
+        self,
+        event_ids: list[str],
+        bookmakers: list[str],
+        market: str = "1x2",
+    ) -> list[OddsOutput | AsianHandicapOutput | TotalsOutput | BTTSOutput | CorrectScoreOutput | DoubleChanceOutput]:
+        """GET /odds with multiple events - Batch odds request.
+
+        Fetches odds for multiple events in parallel to reduce quota usage.
+
+        Args:
+            event_ids: List of event IDs (max 10)
+            bookmakers: List of bookmaker keys
+            market: Market type
+
+        Returns:
+            List of odds results (one per event)
+        """
+        # Limit to 10 events max
+        event_ids = event_ids[:10]
+
+        # Fetch odds in parallel
+        tasks = [self.get_odds(eid, bookmakers, market) for eid in event_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Filter out errors and None results
+        odds_list = []
+        for result in results:
+            if result is not None and not isinstance(result, Exception):
+                odds_list.append(result)
+
+        return odds_list
+
+    async def get_odds_updated(
+        self,
+        since: int,
+        bookmaker: str | None = None,
+        sport: str | None = None,
+        market: str = "ML",
+    ) -> list[dict[str, Any]]:
+        """GET /odds/updated - Get odds that changed since a timestamp.
+
+        Useful for efficient polling without fetching all odds.
+
+        Args:
+            since: Unix timestamp (seconds) - only return odds updated after this time
+            bookmaker: Optional bookmaker filter
+            sport: Optional sport filter
+            market: Market type filter
+
+        Returns:
+            List of updated odds entries
+        """
+        params: dict[str, Any] = {
+            "since": since,
+            "market": market,
+        }
+        if bookmaker:
+            params["bookmaker"] = bookmaker
+        if sport:
+            params["sport"] = sport
+
+        # Short cache for updated odds (30 seconds)
+        cache_key = f"odds_updated:{since}:{bookmaker or 'all'}:{sport or 'all'}:{market}"
+        data = await self._request(
+            "/odds/updated",
+            params=params,
+            cache_key=cache_key,
+            cache_ttl=30,
+        )
+
+        if not data or not isinstance(data, list):
+            return []
+
+        return data
+
+    async def get_participants(
+        self,
+        sport: str,
+        search: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /participants - List teams/participants.
+
+        Args:
+            sport: Sport slug (required)
+            search: Optional search query for team name
+
+        Returns:
+            List of participants
+        """
+        params: dict[str, Any] = {"sport": sport}
+        if search:
+            params["search"] = search
+
+        cache_key = f"participants:{sport}:{search or 'all'}"
+        data = await self._request(
+            "/participants",
+            params=params,
+            cache_key=cache_key,
+            cache_ttl=settings.cache_ttl_sports,  # 24h cache
+        )
+
+        if not data or not isinstance(data, list):
+            return []
+
+        return data
+
+    async def get_participant(self, participant_id: str) -> dict[str, Any] | None:
+        """GET /participants/{id} - Get a single participant by ID.
+
+        Args:
+            participant_id: Participant identifier
+
+        Returns:
+            Participant data or None if not found
+        """
+        cache_key = f"participant:{participant_id}"
+        data = await self._request(
+            f"/participants/{participant_id}",
+            cache_key=cache_key,
+            cache_ttl=settings.cache_ttl_sports,  # 24h cache
+        )
+
+        if not data or not isinstance(data, dict):
+            return None
+
+        return data
 
 
 odds_client = OddsAPIClient()

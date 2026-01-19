@@ -10,7 +10,17 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api.routes import arbitrage, events, leagues, odds, static_files, value_bets
+from app.api.routes import (
+    arbitrage,
+    bookmakers,
+    events,
+    leagues,
+    odds,
+    participants,
+    sports,
+    static_files,
+    value_bets,
+)
 from app.config import settings
 from app.exceptions import (
     CacheError,
@@ -22,8 +32,6 @@ from app.exceptions import (
     RateLimitError,
     ValidationError,
 )
-from app.providers.odds_api import odds_api_provider
-from app.schemas import BookmakerResponse, SportResponse
 from app.services.cache import cache_service
 from app.services.metrics import metrics_service
 from app.services.rate_limiter import limiter
@@ -171,6 +179,9 @@ async def odds_api_error_handler(request: Request, exc: OddsAPIError):
 app.include_router(events.router, prefix="/events", tags=["events"])
 app.include_router(odds.router, prefix="/odds", tags=["odds"])
 app.include_router(leagues.router, prefix="/leagues", tags=["leagues"])
+app.include_router(sports.router, prefix="/sports", tags=["sports"])
+app.include_router(bookmakers.router, prefix="/bookmakers", tags=["bookmakers"])
+app.include_router(participants.router, prefix="/participants", tags=["participants"])
 app.include_router(static_files.router, tags=["static"])
 app.include_router(value_bets.router, prefix="/value-bets", tags=["analysis"])
 app.include_router(arbitrage.router, prefix="/arbitrage-bets", tags=["analysis"])
@@ -180,29 +191,6 @@ app.include_router(arbitrage.router, prefix="/arbitrage-bets", tags=["analysis"]
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "service": "nsn-odds-data"}
-
-
-@app.get("/sports", response_model=list[SportResponse])
-async def get_sports():
-    """Get available sports from Odds-API.io."""
-    sports = await odds_api_provider.get_sports()
-    return [
-        SportResponse(
-            key=s.get("slug", s.get("key", "")),
-            title=s.get("name", s.get("title", "")),
-            active=s.get("active", True),
-        )
-        for s in sports
-    ]
-
-
-@app.get("/bookmakers", response_model=list[BookmakerResponse])
-async def get_bookmakers():
-    """Get configured bookmakers."""
-    return [
-        BookmakerResponse(key=bm, name=bm.title(), region="br")
-        for bm in settings.bookmakers_list
-    ]
 
 
 @app.get("/metrics")

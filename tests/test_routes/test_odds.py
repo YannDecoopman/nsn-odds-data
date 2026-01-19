@@ -193,3 +193,106 @@ async def test_get_odds_movements_with_market(
         assert response.status_code == 200
         data = response.json()
         assert data["market"] == "Totals"
+
+
+@pytest.mark.asyncio
+async def test_get_odds_multi_success(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/multi returns batch odds."""
+    odds_output = OddsOutput(
+        event=EventData(
+            id="evt_123",
+            sport="football",
+            league="Premier League",
+            league_id="pl",
+            home_team="Team A",
+            away_team="Team B",
+            commence_time=datetime(2026, 1, 20, 15, 0, 0),
+        ),
+        market="1x2",
+        bookmakers=[
+            BookmakerOdds(
+                key="bet365",
+                name="Bet365",
+                odds=OddsValues(home=1.80, draw=3.50, away=4.20),
+                updated_at=datetime(2026, 1, 18, 10, 0, 0),
+            ),
+        ],
+        metadata=OddsMetadata(
+            generated_at=datetime(2026, 1, 18, 10, 0, 0),
+            is_ended=False,
+            hash="abc123",
+        ),
+    )
+
+    with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
+        mock_provider.get_odds_multi = AsyncMock(return_value=[odds_output, odds_output])
+
+        response = await test_client.get("/odds/multi", params={"eventIds": "evt_123,evt_456"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_odds_multi_empty_ids(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/multi with empty event IDs returns 400."""
+    response = await test_client.get("/odds/multi", params={"eventIds": ""})
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_odds_multi_too_many_ids(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/multi with more than 10 IDs returns 400."""
+    ids = ",".join([f"evt_{i}" for i in range(15)])
+    response = await test_client.get("/odds/multi", params={"eventIds": ids})
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_get_odds_multi_missing_param(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/multi without eventIds returns 422."""
+    response = await test_client.get("/odds/multi")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_odds_updated_success(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/updated returns updated odds."""
+    updated_data = [
+        {"eventId": "evt_123", "bookmaker": "Bet365", "odds": {"home": 1.80}},
+        {"eventId": "evt_456", "bookmaker": "Betano", "odds": {"home": 2.10}},
+    ]
+
+    with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
+        mock_provider.get_odds_updated = AsyncMock(return_value=updated_data)
+
+        response = await test_client.get("/odds/updated", params={"since": 1737200000})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_odds_updated_with_filters(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/updated with optional filters."""
+    with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
+        mock_provider.get_odds_updated = AsyncMock(return_value=[])
+
+        response = await test_client.get(
+            "/odds/updated",
+            params={"since": 1737200000, "bookmaker": "Bet365", "sport": "football", "market": "ML"},
+        )
+
+        assert response.status_code == 200
+        mock_provider.get_odds_updated.assert_called_once_with(
+            since=1737200000, bookmaker="Bet365", sport="football", market="ML"
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_odds_updated_missing_since(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/updated without since returns 422."""
+    response = await test_client.get("/odds/updated")
+    assert response.status_code == 422
