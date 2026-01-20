@@ -32,6 +32,8 @@ from app.exceptions import (
     RateLimitError,
     ValidationError,
 )
+from app.db import async_session_maker
+from app.services import api_key_service
 from app.services.cache import cache_service
 from app.services.metrics import metrics_service
 from app.services.rate_limiter import limiter
@@ -81,22 +83,34 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # API Key authentication middleware
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
-    """Validate API key if enabled."""
-    # Skip auth for health/docs endpoints
-    if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+    """Validate API key against database if enabled."""
+    # Skip auth for health/docs/metrics endpoints
+    if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc", "/metrics"):
         return await call_next(request)
 
     # Skip if API key auth is disabled
-    if not settings.api_key_enabled or not settings.api_key:
+    if not settings.api_key_enabled:
         return await call_next(request)
 
-    # Check API key
+    # Check API key header
     api_key = request.headers.get("X-API-Key")
-    if api_key != settings.api_key:
+    if not api_key:
         return JSONResponse(
             status_code=401,
-            content={"error": "UNAUTHORIZED", "message": "Invalid or missing API key"},
+            content={"error": "UNAUTHORIZED", "message": "Missing API key"},
         )
+
+    # Validate against database
+    async with async_session_maker() as session:
+        key_record = await api_key_service.validate_key(session, api_key)
+        if not key_record:
+            return JSONResponse(
+                status_code=401,
+                content={"error": "UNAUTHORIZED", "message": "Invalid API key"},
+            )
+
+        # Update last_used_at (non-blocking background update)
+        await api_key_service.touch_key(session, key_record.id)
 
     return await call_next(request)
 

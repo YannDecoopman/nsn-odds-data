@@ -130,3 +130,20 @@ class StaticFile(Base):
         Index("idx_static_path", "path"),
         Index("idx_static_request", "request_data_id"),
     )
+
+
+class APIKey(Base):
+    """API keys for multi-tenant authentication."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
