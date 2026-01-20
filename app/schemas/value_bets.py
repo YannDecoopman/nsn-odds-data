@@ -2,19 +2,16 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import LeagueInfo, SportInfo
+from app.schemas.common import CamelCaseModel, LeagueInfo, SportInfo
 
 
-class ValueBetOdds(BaseModel):
+class ValueBetOdds(CamelCaseModel):
     """Bookmaker odds for a value bet."""
 
     home: float
     draw: float | None = None  # None for 2-way markets (tennis, etc.)
     away: float
     home_direct_link: str | None = Field(None, alias="homeDirectLink")
-
-    class Config:
-        populate_by_name = True
 
 
 class ConsensusOdds(BaseModel):
@@ -35,7 +32,7 @@ class ValueBetEvent(BaseModel):
     league: LeagueInfo
 
 
-class ValueBet(BaseModel):
+class ValueBet(CamelCaseModel):
     """Single value bet opportunity."""
 
     id: str
@@ -48,9 +45,6 @@ class ValueBet(BaseModel):
     bookmaker_odds: ValueBetOdds = Field(alias="bookmakerOdds")
     consensus_odds: ConsensusOdds = Field(alias="consensusOdds")
     event: ValueBetEvent
-
-    class Config:
-        populate_by_name = True
 
 
 class ValueBetsResponse(BaseModel):

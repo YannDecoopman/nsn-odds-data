@@ -81,14 +81,16 @@ class OddsAPIProvider(ProviderInterface):
 
     async def get_value_bets(
         self,
+        bookmakers: list[str] | None = None,
         sport: str | None = None,
         league: str | None = None,
         min_ev: float = 2.0,
         limit: int = 10,
     ) -> ValueBetsResponse:
-        """Get value bets from all configured bookmakers."""
+        """Get value bets from specified bookmakers."""
+        bm_list = bookmakers if bookmakers else settings.bookmakers_list
         return await odds_client.get_value_bets(
-            bookmakers=settings.bookmakers_list,
+            bookmakers=bm_list,
             sport=sport,
             league=league,
             min_ev=min_ev,
@@ -97,13 +99,15 @@ class OddsAPIProvider(ProviderInterface):
 
     async def get_arbitrage_bets(
         self,
+        bookmakers: list[str] | None = None,
         sport: str | None = None,
         min_profit: float = 1.0,
         limit: int = 5,
     ) -> ArbitrageResponse:
-        """Get arbitrage opportunities from all configured bookmakers."""
+        """Get arbitrage opportunities from specified bookmakers."""
+        bm_list = bookmakers if bookmakers else settings.bookmakers_list
         return await odds_client.get_arbitrage_bets(
-            bookmakers=settings.bookmakers_list,
+            bookmakers=bm_list,
             sport=sport,
             min_profit=min_profit,
             limit=limit,

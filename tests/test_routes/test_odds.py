@@ -47,7 +47,7 @@ async def test_get_odds_success(test_client, mock_cache_service, mock_metrics_se
     with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
         mock_provider.get_odds = AsyncMock(return_value=odds_output)
 
-        response = await test_client.get("/odds", params={"eventId": "evt_123"})
+        response = await test_client.get("/odds", params={"eventId": "evt_123", "region": "uk"})
 
         assert response.status_code == 200
         data = response.json()
@@ -63,7 +63,7 @@ async def test_get_odds_with_market(test_client, mock_cache_service, mock_metric
         mock_provider.get_odds = AsyncMock(return_value=None)
 
         response = await test_client.get(
-            "/odds", params={"eventId": "evt_123", "market": "asian_handicap"}
+            "/odds", params={"eventId": "evt_123", "region": "uk", "market": "asian_handicap"}
         )
 
         # Even if no odds returned, request should succeed
@@ -72,25 +72,49 @@ async def test_get_odds_with_market(test_client, mock_cache_service, mock_metric
 
 @pytest.mark.asyncio
 async def test_get_odds_with_bookmakers(test_client, mock_cache_service, mock_metrics_service):
-    """Test GET /odds with custom bookmakers list."""
+    """Test GET /odds with custom bookmakers list (must be allowed in region)."""
     with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
         mock_provider.get_odds = AsyncMock(return_value=None)
-        with patch("app.api.routes.odds.settings") as mock_settings:
-            mock_settings.bookmakers_list = ["bet365", "betano"]
 
-            response = await test_client.get(
-                "/odds", params={"eventId": "evt_123", "bookmakers": "bet365,betfair"}
-            )
+        # bet365 and betfair are allowed in UK region
+        response = await test_client.get(
+            "/odds", params={"eventId": "evt_123", "region": "uk", "bookmakers": "bet365,betfair"}
+        )
 
-            # Verify custom bookmakers were passed
-            mock_provider.get_odds.assert_called_once()
+        # Verify custom bookmakers were passed
+        mock_provider.get_odds.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_get_odds_missing_event_id(test_client, mock_cache_service, mock_metrics_service):
     """Test GET /odds without eventId returns 422."""
-    response = await test_client.get("/odds")
+    response = await test_client.get("/odds", params={"region": "uk"})
     assert response.status_code == 422  # Validation error
+
+
+@pytest.mark.asyncio
+async def test_get_odds_missing_region(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds without region returns 422."""
+    response = await test_client.get("/odds", params={"eventId": "evt_123"})
+    assert response.status_code == 422  # Validation error - region is required
+
+
+@pytest.mark.asyncio
+async def test_get_odds_invalid_region(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds with invalid region returns 422."""
+    response = await test_client.get("/odds", params={"eventId": "evt_123", "region": "xx"})
+    assert response.status_code == 422  # Validation error
+
+
+@pytest.mark.asyncio
+async def test_get_odds_bookmaker_not_in_region(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds with bookmaker not allowed in region returns 400."""
+    # bet365 is NOT allowed in Brazil region
+    response = await test_client.get(
+        "/odds", params={"eventId": "evt_123", "region": "br", "bookmakers": "bet365"}
+    )
+    assert response.status_code == 400
+    assert "not available" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -122,7 +146,7 @@ async def test_get_odds_movements_success(test_client, mock_cache_service, mock_
     with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
         mock_provider.get_odds_movements = AsyncMock(return_value=movements_response)
 
-        response = await test_client.get("/odds/movements", params={"eventId": "evt_123"})
+        response = await test_client.get("/odds/movements", params={"eventId": "evt_123", "region": "uk"})
 
         assert response.status_code == 200
         data = response.json()
@@ -138,7 +162,7 @@ async def test_get_odds_movements_not_found(test_client, mock_cache_service, moc
     with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
         mock_provider.get_odds_movements = AsyncMock(return_value=None)
 
-        response = await test_client.get("/odds/movements", params={"eventId": "evt_999"})
+        response = await test_client.get("/odds/movements", params={"eventId": "evt_999", "region": "uk"})
 
         assert response.status_code == 404
 
@@ -160,8 +184,9 @@ async def test_get_odds_movements_with_bookmaker(
     with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
         mock_provider.get_odds_movements = AsyncMock(return_value=movements_response)
 
+        # betano is allowed in Brazil region
         response = await test_client.get(
-            "/odds/movements", params={"eventId": "evt_123", "bookmaker": "Betano"}
+            "/odds/movements", params={"eventId": "evt_123", "region": "br", "bookmaker": "betano"}
         )
 
         assert response.status_code == 200
@@ -187,7 +212,7 @@ async def test_get_odds_movements_with_market(
         mock_provider.get_odds_movements = AsyncMock(return_value=movements_response)
 
         response = await test_client.get(
-            "/odds/movements", params={"eventId": "evt_123", "market": "Totals"}
+            "/odds/movements", params={"eventId": "evt_123", "region": "uk", "market": "Totals"}
         )
 
         assert response.status_code == 200
@@ -227,7 +252,7 @@ async def test_get_odds_multi_success(test_client, mock_cache_service, mock_metr
     with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
         mock_provider.get_odds_multi = AsyncMock(return_value=[odds_output, odds_output])
 
-        response = await test_client.get("/odds/multi", params={"eventIds": "evt_123,evt_456"})
+        response = await test_client.get("/odds/multi", params={"eventIds": "evt_123,evt_456", "region": "uk"})
 
         assert response.status_code == 200
         data = response.json()
@@ -237,7 +262,7 @@ async def test_get_odds_multi_success(test_client, mock_cache_service, mock_metr
 @pytest.mark.asyncio
 async def test_get_odds_multi_empty_ids(test_client, mock_cache_service, mock_metrics_service):
     """Test GET /odds/multi with empty event IDs returns 400."""
-    response = await test_client.get("/odds/multi", params={"eventIds": ""})
+    response = await test_client.get("/odds/multi", params={"eventIds": "", "region": "uk"})
     assert response.status_code == 400
 
 
@@ -245,14 +270,14 @@ async def test_get_odds_multi_empty_ids(test_client, mock_cache_service, mock_me
 async def test_get_odds_multi_too_many_ids(test_client, mock_cache_service, mock_metrics_service):
     """Test GET /odds/multi with more than 10 IDs returns 400."""
     ids = ",".join([f"evt_{i}" for i in range(15)])
-    response = await test_client.get("/odds/multi", params={"eventIds": ids})
+    response = await test_client.get("/odds/multi", params={"eventIds": ids, "region": "uk"})
     assert response.status_code == 400
 
 
 @pytest.mark.asyncio
 async def test_get_odds_multi_missing_param(test_client, mock_cache_service, mock_metrics_service):
     """Test GET /odds/multi without eventIds returns 422."""
-    response = await test_client.get("/odds/multi")
+    response = await test_client.get("/odds/multi", params={"region": "uk"})
     assert response.status_code == 422
 
 
@@ -267,7 +292,7 @@ async def test_get_odds_updated_success(test_client, mock_cache_service, mock_me
     with patch("app.api.routes.odds.odds_api_provider") as mock_provider:
         mock_provider.get_odds_updated = AsyncMock(return_value=updated_data)
 
-        response = await test_client.get("/odds/updated", params={"since": 1737200000})
+        response = await test_client.get("/odds/updated", params={"since": 1737200000, "region": "uk"})
 
         assert response.status_code == 200
         data = response.json()
@@ -282,17 +307,26 @@ async def test_get_odds_updated_with_filters(test_client, mock_cache_service, mo
 
         response = await test_client.get(
             "/odds/updated",
-            params={"since": 1737200000, "bookmaker": "Bet365", "sport": "football", "market": "ML"},
+            params={"since": 1737200000, "region": "uk", "bookmaker": "bet365", "sport": "football", "market": "ML"},
         )
 
         assert response.status_code == 200
         mock_provider.get_odds_updated.assert_called_once_with(
-            since=1737200000, bookmaker="Bet365", sport="football", market="ML"
+            since=1737200000, bookmaker="bet365", sport="football", market="ML"
         )
 
 
 @pytest.mark.asyncio
 async def test_get_odds_updated_missing_since(test_client, mock_cache_service, mock_metrics_service):
     """Test GET /odds/updated without since returns 422."""
-    response = await test_client.get("/odds/updated")
+    response = await test_client.get("/odds/updated", params={"region": "uk"})
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_odds_updated_bookmaker_not_in_region(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /odds/updated with bookmaker not in region returns 400."""
+    response = await test_client.get(
+        "/odds/updated", params={"since": 1737200000, "region": "br", "bookmaker": "bet365"}
+    )
+    assert response.status_code == 400

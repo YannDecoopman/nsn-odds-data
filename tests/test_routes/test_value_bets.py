@@ -41,7 +41,7 @@ async def test_list_value_bets_success(test_client, mock_cache_service, mock_met
     with patch("app.api.routes.value_bets.odds_api_provider") as mock_provider:
         mock_provider.get_value_bets = AsyncMock(return_value=response_data)
 
-        response = await test_client.get("/value-bets")
+        response = await test_client.get("/value-bets", params={"region": "uk"})
 
         assert response.status_code == 200
         data = response.json()
@@ -59,7 +59,7 @@ async def test_list_value_bets_with_sport_filter(
     with patch("app.api.routes.value_bets.odds_api_provider") as mock_provider:
         mock_provider.get_value_bets = AsyncMock(return_value=ValueBetsResponse(data=[]))
 
-        response = await test_client.get("/value-bets", params={"sport": "basketball"})
+        response = await test_client.get("/value-bets", params={"region": "uk", "sport": "basketball"})
 
         assert response.status_code == 200
         call_kwargs = mock_provider.get_value_bets.call_args[1]
@@ -72,7 +72,7 @@ async def test_list_value_bets_with_min_ev(test_client, mock_cache_service, mock
     with patch("app.api.routes.value_bets.odds_api_provider") as mock_provider:
         mock_provider.get_value_bets = AsyncMock(return_value=ValueBetsResponse(data=[]))
 
-        response = await test_client.get("/value-bets", params={"minEV": 5.0})
+        response = await test_client.get("/value-bets", params={"region": "uk", "minEV": 5.0})
 
         assert response.status_code == 200
         call_kwargs = mock_provider.get_value_bets.call_args[1]
@@ -87,7 +87,7 @@ async def test_list_value_bets_with_league_filter(
     with patch("app.api.routes.value_bets.odds_api_provider") as mock_provider:
         mock_provider.get_value_bets = AsyncMock(return_value=ValueBetsResponse(data=[]))
 
-        response = await test_client.get("/value-bets", params={"league": "premier-league"})
+        response = await test_client.get("/value-bets", params={"region": "uk", "league": "premier-league"})
 
         assert response.status_code == 200
         call_kwargs = mock_provider.get_value_bets.call_args[1]
@@ -100,7 +100,7 @@ async def test_list_value_bets_with_limit(test_client, mock_cache_service, mock_
     with patch("app.api.routes.value_bets.odds_api_provider") as mock_provider:
         mock_provider.get_value_bets = AsyncMock(return_value=ValueBetsResponse(data=[]))
 
-        response = await test_client.get("/value-bets", params={"limit": 25})
+        response = await test_client.get("/value-bets", params={"region": "uk", "limit": 25})
 
         assert response.status_code == 200
         call_kwargs = mock_provider.get_value_bets.call_args[1]
@@ -113,7 +113,7 @@ async def test_list_value_bets_empty(test_client, mock_cache_service, mock_metri
     with patch("app.api.routes.value_bets.odds_api_provider") as mock_provider:
         mock_provider.get_value_bets = AsyncMock(return_value=ValueBetsResponse(data=[]))
 
-        response = await test_client.get("/value-bets")
+        response = await test_client.get("/value-bets", params={"region": "uk"})
 
         assert response.status_code == 200
         data = response.json()
@@ -125,5 +125,27 @@ async def test_list_value_bets_limit_validation(
     test_client, mock_cache_service, mock_metrics_service
 ):
     """Test GET /value-bets rejects limit > 50."""
-    response = await test_client.get("/value-bets", params={"limit": 100})
+    response = await test_client.get("/value-bets", params={"region": "uk", "limit": 100})
     assert response.status_code == 422  # Validation error
+
+
+@pytest.mark.asyncio
+async def test_list_value_bets_missing_region(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /value-bets without region returns 422."""
+    response = await test_client.get("/value-bets")
+    assert response.status_code == 422  # Validation error - region is required
+
+
+@pytest.mark.asyncio
+async def test_list_value_bets_region_bookmakers(test_client, mock_cache_service, mock_metrics_service):
+    """Test GET /value-bets passes correct bookmakers for region."""
+    with patch("app.api.routes.value_bets.odds_api_provider") as mock_provider:
+        mock_provider.get_value_bets = AsyncMock(return_value=ValueBetsResponse(data=[]))
+
+        response = await test_client.get("/value-bets", params={"region": "br"})
+
+        assert response.status_code == 200
+        call_kwargs = mock_provider.get_value_bets.call_args[1]
+        # Should pass Brazilian bookmakers
+        assert "betano" in call_kwargs["bookmakers"]
+        assert "pixbet" in call_kwargs["bookmakers"]

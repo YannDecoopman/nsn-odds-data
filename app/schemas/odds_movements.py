@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import CamelCaseModel
+
 
 class OddsSnapshot(BaseModel):
     """Single odds snapshot at a point in time."""
@@ -12,7 +14,7 @@ class OddsSnapshot(BaseModel):
     timestamp: datetime
 
 
-class OddsMovementsResponse(BaseModel):
+class OddsMovementsResponse(CamelCaseModel):
     """Response for odds movements endpoint."""
 
     event_id: str = Field(alias="eventId")
@@ -21,6 +23,3 @@ class OddsMovementsResponse(BaseModel):
     opening: OddsSnapshot
     latest: OddsSnapshot
     movements: list[OddsSnapshot]
-
-    class Config:
-        populate_by_name = True

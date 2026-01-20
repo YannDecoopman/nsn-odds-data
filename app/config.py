@@ -1,7 +1,40 @@
-from pydantic_settings import BaseSettings
+import os
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Default bookmakers per region (can be overridden via env vars)
+DEFAULT_REGION_BOOKMAKERS: dict[str, list[str]] = {
+    "br": ["betano", "pixbet", "kto", "betclic", "winamax"],
+    "fr": ["betclic", "winamax", "unibet", "pmu", "zebet"],
+    "uk": ["bet365", "william_hill", "ladbrokes", "paddy_power", "betfair"],
+    "es": ["bet365", "betway", "codere", "sportium", "888sport"],
+    "it": ["bet365", "sisal", "snai", "goldbet", "lottomatica"],
+    "de": ["bet365", "tipico", "bwin", "betway", "unibet"],
+    "mx": ["caliente", "betway", "bet365", "codere", "1xbet"],
+    "ar": ["bet365", "betsson", "betway", "codere", "bwin"],
+    "co": ["betplay", "wplay", "bet365", "betsson", "1xbet"],
+}
+
+
+def load_region_bookmakers() -> dict[str, list[str]]:
+    """Load region bookmakers from env vars, falling back to defaults."""
+    result = {}
+    for region, defaults in DEFAULT_REGION_BOOKMAKERS.items():
+        env_key = f"REGION_BOOKMAKERS_{region.upper()}"
+        env_val = os.getenv(env_key)
+        if env_val:
+            result[region] = [b.strip() for b in env_val.split(",") if b.strip()]
+        else:
+            result[region] = defaults
+    return result
+
+
+REGION_BOOKMAKERS: dict[str, list[str]] = load_region_bookmakers()
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     # Database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/odds_data"
 
@@ -15,7 +48,7 @@ class Settings(BaseSettings):
     # Static files
     static_files_path: str = "static"
 
-    # Bookmakers (comma-separated, Brazilian market)
+    # Bookmakers (comma-separated, default fallback)
     default_bookmakers: str = "betano,sportingbet,betfair,bet365"
 
     # Cache TTL (seconds)
@@ -65,10 +98,6 @@ class Settings(BaseSettings):
     @property
     def bookmakers_list(self) -> list[str]:
         return [b.strip() for b in self.default_bookmakers.split(",") if b.strip()]
-
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
 
 
 settings = Settings()

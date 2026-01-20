@@ -10,21 +10,55 @@ import pytest
 
 def test_generate_request_schema():
     """Test GenerateRequest schema validation."""
+    from app.schemas.common import Region
     from app.schemas.static_file import GenerateRequest
 
-    # Valid request
-    request = GenerateRequest(event_id="evt_123", market="1x2")
+    # Valid request with region
+    request = GenerateRequest(event_id="evt_123", region=Region.BR, market="1x2")
     assert request.event_id == "evt_123"
+    assert request.region == Region.BR
     assert request.market == "1x2"
     assert request.bookmakers is None
 
     # With bookmakers
     request = GenerateRequest(
         event_id="evt_456",
+        region=Region.UK,
         market="asian_handicap",
         bookmakers=["bet365", "betfair"],
     )
     assert request.bookmakers == ["bet365", "betfair"]
+
+
+def test_generate_requires_region():
+    """Test GenerateRequest requires region field."""
+    import pytest
+    from pydantic import ValidationError
+
+    from app.schemas.static_file import GenerateRequest
+
+    # Missing region should raise ValidationError (422 in API)
+    with pytest.raises(ValidationError) as exc_info:
+        GenerateRequest(event_id="evt_123", market="1x2")
+
+    errors = exc_info.value.errors()
+    assert any(e["loc"] == ("region",) for e in errors)
+
+
+def test_generate_validates_bookmakers():
+    """Test bookmaker validation for region."""
+    from fastapi import HTTPException
+
+    from app.schemas.common import Region
+    from app.services.region_filter import get_bookmakers_for_region
+
+    # UK bookmaker not allowed in BR region should raise 400
+    try:
+        get_bookmakers_for_region(Region.BR, ["bet365"])
+        assert False, "Should have raised HTTPException"
+    except HTTPException as e:
+        assert e.status_code == 400
+        assert "not available in region" in e.detail
 
 
 def test_generate_response_schema():

@@ -8,6 +8,7 @@ from app.api.dependencies import get_db
 from app.config import settings
 from app.schemas.static_file import FileInfoResponse, GenerateRequest, GenerateResponse
 from app.services.rate_limiter import limiter
+from app.services.region_filter import get_bookmakers_for_region
 from app.services.static_file import static_file_service
 
 router = APIRouter()
@@ -16,15 +17,15 @@ router = APIRouter()
 @router.post("/generate", response_model=GenerateResponse)
 @limiter.limit(settings.rate_limit_heavy)
 async def generate_odds_file(
-    request: GenerateRequest,
-    req: Request,
+    request: Request,
+    body: GenerateRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """Request generation of a static odds file."""
     request_data = await static_file_service.get_or_create_request_data(
         db=db,
-        event_id=request.event_id,
-        market=request.market,
+        event_id=body.event_id,
+        market=body.market,
     )
     static_file = await static_file_service.get_or_create_static_file(
         db=db,
@@ -32,10 +33,10 @@ async def generate_odds_file(
     )
     await db.commit()
 
-    bookmakers = request.bookmakers or settings.bookmakers_list
+    bookmakers = get_bookmakers_for_region(body.region, body.bookmakers)
 
-    if req.app.state.arq_pool:
-        await req.app.state.arq_pool.enqueue_job(
+    if request.app.state.arq_pool:
+        await request.app.state.arq_pool.enqueue_job(
             "generate_static_file_task",
             static_file.id,
             bookmakers,

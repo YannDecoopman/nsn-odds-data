@@ -149,6 +149,38 @@ Request → RequestData (DB) → StaticFile (DB) → ARQ Task → JSON file
 - **Odds-API.io documentation** : https://docs.odds-api.io/llms-full.txt
 - **API Spec (endpoints à implémenter)** : `docs/API_SPEC.md`
 
+## API Limitations (odds-api.io)
+
+### Bookmaker Selection
+- **Max 5 bookmakers** par plan (limitation API)
+- Bookmakers actuellement sélectionnés : `Betano, Pixbet, Betnacional, KTO, Estrela Bet`
+- Pour changer : `PUT /bookmakers/selected/clear?apiKey=YOUR_API_KEY`
+
+### Disponibilité des marchés par bookmaker
+
+| Marché | Bookmakers BR | Bookmakers EU/Asia |
+|--------|---------------|-------------------|
+| 1X2 | ✅ Disponible | ✅ Disponible |
+| Totals (O/U) | ✅ Disponible | ✅ Disponible |
+| BTTS | ❌ Non disponible | ✅ Bet365, Pinnacle |
+| Asian Handicap | ❌ Non disponible | ✅ Bet365, Pinnacle, Sbobet |
+| Correct Score | ⚠️ Partiel | ✅ La plupart |
+| Double Chance | ✅ Disponible | ✅ Disponible |
+
+**Important** : Les bookmakers brésiliens (Betano, Pixbet, Betnacional, KTO, Estrela Bet) ne proposent PAS les marchés **Asian Handicap** et **BTTS**. Pour ces marchés, il faut des bookmakers européens/asiatiques (Bet365, Pinnacle, Sbobet).
+
+### Erreurs courantes
+
+```
+HTTP 403: Access denied. You're allowed max 5 bookmakers.
+```
+→ Upgrade plan ou changer les bookmakers sélectionnés
+
+```
+No odds data for event {id}
+```
+→ Le marché demandé n'est pas disponible chez les bookmakers sélectionnés
+
 ## Notes
 
 - All sports supported via Odds-API.io

@@ -139,7 +139,7 @@ class StaticFileService:
 
         # Update database
         static_file.hash = new_hash
-        static_file.last_modified = int(datetime.now().timestamp())
+        static_file.last_modified = last_modified
 
         # Update event_date from odds data (for intelligent refresh frequency)
         if hasattr(odds_data, 'event') and hasattr(odds_data.event, 'commence_time'):

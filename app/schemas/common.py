@@ -1,6 +1,20 @@
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+
+class Region(str, Enum):
+    """Supported betting regions (country codes)."""
+
+    BR = "br"  # Brazil
+    FR = "fr"  # France
+    UK = "uk"  # United Kingdom
+    ES = "es"  # Spain
+    IT = "it"  # Italy
+    DE = "de"  # Germany
+    MX = "mx"  # Mexico
+    AR = "ar"  # Argentina
+    CO = "co"  # Colombia
 
 
 class Market(str, Enum):
@@ -12,6 +26,12 @@ class Market(str, Enum):
     BTTS = "btts"
     CORRECT_SCORE = "correct_score"
     DOUBLE_CHANCE = "double_chance"
+
+
+class CamelCaseModel(BaseModel):
+    """Base model with camelCase alias support."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class SportInfo(BaseModel):

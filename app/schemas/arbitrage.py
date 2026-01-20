@@ -2,10 +2,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import LeagueInfo, SportInfo
+from app.schemas.common import CamelCaseModel, LeagueInfo, SportInfo
 
 
-class ArbitrageLeg(BaseModel):
+class ArbitrageLeg(CamelCaseModel):
     """Individual leg of an arbitrage opportunity."""
 
     side: str
@@ -13,20 +13,14 @@ class ArbitrageLeg(BaseModel):
     odds: float
     direct_link: str | None = Field(None, alias="directLink")
 
-    class Config:
-        populate_by_name = True
 
-
-class OptimalStake(BaseModel):
+class OptimalStake(CamelCaseModel):
     """Optimal stake for a leg."""
 
     side: str
     bookmaker: str
     stake: float
     potential_return: float = Field(alias="potentialReturn")
-
-    class Config:
-        populate_by_name = True
 
 
 class ArbitrageEvent(BaseModel):
@@ -39,7 +33,7 @@ class ArbitrageEvent(BaseModel):
     league: LeagueInfo
 
 
-class ArbitrageBet(BaseModel):
+class ArbitrageBet(CamelCaseModel):
     """Single arbitrage opportunity."""
 
     id: str
@@ -52,9 +46,6 @@ class ArbitrageBet(BaseModel):
     optimal_stakes: list[OptimalStake] = Field(alias="optimalStakes")
     event: ArbitrageEvent
     detected_at: datetime = Field(alias="detectedAt")
-
-    class Config:
-        populate_by_name = True
 
 
 class ArbitrageResponse(BaseModel):
