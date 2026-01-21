@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Query, Request
 
 from app.config import settings
+from app.db import async_session_maker
 from app.providers.odds_api import odds_api_provider
 from app.schemas.events import (
     EventListResponse,
@@ -12,9 +13,24 @@ from app.schemas.events import (
     PaginationInfo,
 )
 from app.services.cache import CACHE_KEY_UPCOMING, cache_service
+from app.services.league_filter import (
+    filter_events_by_whitelist,
+    filter_live_events_by_whitelist,
+)
+from app.services.league_whitelist_service import get_allowed_leagues_with_patterns
 from app.services.rate_limiter import limiter
 
 router = APIRouter()
+
+
+async def _get_whitelist_filters(
+    sport: str | None = None,
+) -> tuple[set[str], list[str]]:
+    """Get whitelist filters if enabled."""
+    if not settings.whitelist_enabled:
+        return set(), []
+    async with async_session_maker() as session:
+        return await get_allowed_leagues_with_patterns(session, sport)
 
 
 @router.get("", response_model=EventListResponse)
@@ -30,13 +46,20 @@ async def list_events(
     offset: int = Query(0, ge=0),
 ):
     """Get events with filters and pagination."""
-    events, total = await odds_api_provider.get_events(
+    events, _ = await odds_api_provider.get_events(
         sport=sport,
         league=league,
         status=status.value if status else None,
         date_from=date_from,
         date_to=date_to,
     )
+
+    # Apply whitelist filter
+    exact, patterns = await _get_whitelist_filters(sport)
+    if exact or patterns:
+        events = filter_events_by_whitelist(events, exact, patterns)
+
+    total = len(events)
 
     # Apply pagination
     paginated = events[offset : offset + limit]
@@ -56,6 +79,12 @@ async def list_live_events(
 ):
     """Get live events with scores."""
     events = await odds_api_provider.get_live_events(sport=sport)
+
+    # Apply whitelist filter
+    exact, patterns = await _get_whitelist_filters(sport)
+    if exact or patterns:
+        events = filter_live_events_by_whitelist(events, exact, patterns)
+
     return LiveEventsResponse(data=events[:limit])
 
 
@@ -73,6 +102,11 @@ async def search_events(
     """
     # Get events for sport (required by Odds-API.io)
     events, _ = await odds_api_provider.get_events(sport=sport)
+
+    # Apply whitelist filter
+    exact, patterns = await _get_whitelist_filters(sport)
+    if exact or patterns:
+        events = filter_events_by_whitelist(events, exact, patterns)
 
     # Filter by search query (case-insensitive)
     query_lower = q.lower()
@@ -120,6 +154,11 @@ async def get_upcoming_events(
             [e.model_dump(mode="json") for e in events],
             ttl=settings.cache_ttl_upcoming,
         )
+
+    # Apply whitelist filter
+    exact, patterns = await _get_whitelist_filters("football")
+    if exact or patterns:
+        events = filter_events_by_whitelist(events, exact, patterns)
 
     # Filter by leagues if specified (override default major leagues)
     if leagues:

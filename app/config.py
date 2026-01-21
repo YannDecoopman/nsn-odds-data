@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     api_key: str = ""  # If set, requires X-API-Key header
     api_key_enabled: bool = False
 
+    # League whitelist filtering
+    whitelist_enabled: bool = True  # Toggle global league filtering
+
     @property
     def cors_origins_list(self) -> list[str]:
         if self.cors_origins == "*":

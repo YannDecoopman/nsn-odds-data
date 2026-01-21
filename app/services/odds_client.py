@@ -279,14 +279,12 @@ class OddsAPIClient:
         sport: str | None = None,
     ) -> list[LiveEventResponse]:
         """GET /events/live - Get live events with scores."""
-        params: dict[str, Any] = {}
-        if sport:
-            params["sport"] = sport
-
-        cache_key = f"events:live:{sport or 'all'}"
+        # Fetch ALL live events (odds-api.io doesn't support sport filter param)
+        # Filter locally after parsing if sport is specified
+        cache_key = "events:live:all"
         data = await self._request(
             "/events/live",
-            params=params,
+            params={},
             cache_key=cache_key,
             cache_ttl=30,  # 30s cache for live data
         )
@@ -325,6 +323,11 @@ class OddsAPIClient:
             except Exception as e:
                 logger.warning(f"Failed to parse live event: {e}")
                 continue
+
+        # Filter by sport locally if requested
+        if sport:
+            events = [e for e in events if e.sport.slug == sport]
+
         return events
 
     async def get_leagues(

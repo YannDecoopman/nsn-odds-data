@@ -91,6 +91,18 @@ async def serve_static_file(year: int, month: int, filename: str):
     return FileResponse(path=full_path, media_type="application/json")
 
 
+@router.get("/admin/{filename}")
+async def serve_admin_file(filename: str):
+    """Serve admin HTML files."""
+    # Add .html extension if not present
+    if not filename.endswith(".html"):
+        filename = filename + ".html"
+    full_path = static_file_service.static_path / "admin" / filename
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path=full_path, media_type="text/html")
+
+
 @router.post("/clean-data/{token}")
 async def clean_data(
     token: str,

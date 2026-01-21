@@ -21,6 +21,7 @@ from app.api.routes import (
     static_files,
     value_bets,
 )
+from app.api.routes.admin import whitelist as admin_whitelist
 from app.config import settings
 from app.exceptions import (
     CacheError,
@@ -84,8 +85,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
     """Validate API key against database if enabled."""
-    # Skip auth for health/docs/metrics endpoints
+    # Skip auth for health/docs/metrics/admin-ui endpoints
     if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc", "/metrics"):
+        return await call_next(request)
+
+    # Skip auth for admin HTML pages (UI only, not API)
+    if request.url.path.startswith("/admin/") and not request.url.path.startswith("/admin/whitelist/"):
         return await call_next(request)
 
     # Skip if API key auth is disabled
@@ -196,9 +201,10 @@ app.include_router(leagues.router, prefix="/leagues", tags=["leagues"])
 app.include_router(sports.router, prefix="/sports", tags=["sports"])
 app.include_router(bookmakers.router, prefix="/bookmakers", tags=["bookmakers"])
 app.include_router(participants.router, prefix="/participants", tags=["participants"])
-app.include_router(static_files.router, tags=["static"])
 app.include_router(value_bets.router, prefix="/value-bets", tags=["analysis"])
 app.include_router(arbitrage.router, prefix="/arbitrage-bets", tags=["analysis"])
+app.include_router(admin_whitelist.router, prefix="/admin/whitelist", tags=["admin"])
+app.include_router(static_files.router, tags=["static"])  # Must be last (catch-all /admin/{filename})
 
 
 @app.get("/health")

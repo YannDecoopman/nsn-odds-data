@@ -10,14 +10,12 @@ COPY pyproject.toml .
 COPY app/ app/
 COPY alembic/ alembic/
 COPY alembic.ini .
+COPY static/ static/
 
 # Install dependencies
 RUN uv pip install --system --no-cache \
     fastapi uvicorn[standard] sqlalchemy[asyncio] asyncpg \
     redis httpx pydantic-settings arq alembic slowapi
-
-# Create static directory
-RUN mkdir -p static
 
 EXPOSE 8000
 

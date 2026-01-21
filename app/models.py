@@ -147,3 +147,22 @@ class APIKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class LeagueWhitelist(Base):
+    """Whitelist of allowed leagues per sport."""
+
+    __tablename__ = "league_whitelists"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    sport: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    league_slug: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    league_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("uq_sport_league", "sport", "league_slug", unique=True),
+    )
