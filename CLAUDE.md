@@ -2,6 +2,59 @@
 
 Microservice for fetching and serving sports betting odds from Odds-API.io.
 
+## Production
+
+| | |
+|---|---|
+| **URL** | https://odds.jeanclaude.dev |
+| **Docs** | https://odds.jeanclaude.dev/docs |
+| **Repo** | github.com/YannDecoopman/nsn-odds-data |
+| **Coolify** | NSN Odds API sur serveur-bot-slack |
+
+## Deployment (Coolify)
+
+### Création de l'app
+
+1. **+ New** → **Public Repository**
+2. Git repository: `https://github.com/YannDecoopman/nsn-odds-data`
+3. Branch: `main`
+4. Build Pack: **Docker Compose**
+5. Server: `serveur-bot-slack`
+
+### Environment Variables (obligatoires)
+
+```
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/odds_data
+REDIS_URL=redis://redis:6379/0
+ODDS_API_KEY=<clé odds-api.io>
+DEFAULT_BOOKMAKERS=Bet365
+API_KEY_ENABLED=true
+CORS_ORIGINS=https://odds.jeanclaude.dev
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=odds_data
+```
+
+### Configuration domaine
+
+1. General → **Domains for app** : `https://odds.jeanclaude.dev`
+2. **Save** → **Reload Compose File** → **Redeploy**
+
+### Créer une API Key
+
+Dans Coolify Terminal (container **db**) :
+
+```bash
+psql -U postgres -d odds_data -c "INSERT INTO api_keys (key, name, is_active, created_at) VALUES ('nsn_<token>', 'nom-site', true, NOW());"
+```
+
+Générer un token : `python3 -c "import secrets; print(f'nsn_{secrets.token_urlsafe(32)}')"`
+
+## Docker Files
+
+- `docker-compose.yaml` → **Production** (utilisé par Coolify)
+- `docker-compose.dev.yml` → **Développement local**
+
 ## Endpoints
 
 ### P0 (Done)
