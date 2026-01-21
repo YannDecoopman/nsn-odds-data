@@ -2,19 +2,26 @@ services:
   app:
     build: .
     ports:
-      - "8002:8000"
+      - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/odds_data
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-odds_data}
       - REDIS_URL=redis://redis:6379/0
-    env_file:
-      - .env
+      - ODDS_API_KEY=${ODDS_API_KEY}
+      - API_KEY_ENABLED=true
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
     volumes:
-      - ./static:/app/static
+      - static_files:/app/static
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     labels:
       - "coolify.managed=true"
       - "coolify.expose=true"
@@ -22,23 +29,19 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: odds_data
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-odds_data}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
 
@@ -46,12 +49,11 @@ services:
     build: .
     command: arq app.tasks.worker.WorkerSettings
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/odds_data
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-odds_data}
       - REDIS_URL=redis://redis:6379/0
-    env_file:
-      - .env
+      - ODDS_API_KEY=${ODDS_API_KEY}
     volumes:
-      - ./static:/app/static
+      - static_files:/app/static
     depends_on:
       - db
       - redis
@@ -59,3 +61,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  static_files:
