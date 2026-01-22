@@ -21,6 +21,7 @@ from app.api.routes import (
     static_files,
     value_bets,
 )
+from app.api.routes.admin import api_keys as admin_api_keys
 from app.api.routes.admin import whitelist as admin_whitelist
 from app.config import settings
 from app.exceptions import (
@@ -89,8 +90,9 @@ async def api_key_middleware(request: Request, call_next):
     if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc", "/metrics"):
         return await call_next(request)
 
-    # Skip auth for admin HTML pages (UI only, not API)
-    if request.url.path.startswith("/admin/") and not request.url.path.startswith("/admin/whitelist/"):
+    # Skip auth for admin pages - they have their own auth (admin token)
+    if request.url.path.startswith("/admin/"):
+        # Admin HTML pages and admin API endpoints use their own authentication
         return await call_next(request)
 
     # Skip if API key auth is disabled
@@ -204,6 +206,7 @@ app.include_router(participants.router, prefix="/participants", tags=["participa
 app.include_router(value_bets.router, prefix="/value-bets", tags=["analysis"])
 app.include_router(arbitrage.router, prefix="/arbitrage-bets", tags=["analysis"])
 app.include_router(admin_whitelist.router, prefix="/admin/whitelist", tags=["admin"])
+app.include_router(admin_api_keys.router)  # /admin/api-keys
 app.include_router(static_files.router, tags=["static"])  # Must be last (catch-all /admin/{filename})
 
 

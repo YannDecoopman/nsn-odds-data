@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # League whitelist filtering
     whitelist_enabled: bool = True  # Toggle global league filtering
 
+    # Admin token for API key management
+    admin_token: str = ""  # If set, enables /admin/api-keys endpoint
+
     @property
     def cors_origins_list(self) -> list[str]:
         if self.cors_origins == "*":
